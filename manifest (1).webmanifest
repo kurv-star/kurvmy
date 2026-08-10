@@ -1,0 +1,9 @@
+{
+  "name": "Kurv",
+  "short_name": "Kurv",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fbfaf7",
+  "theme_color": "#fbfaf7",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }]
+}
