@@ -1,0 +1,2574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kurv">
+<meta name="theme-color" content="#f7f5f0">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Kurv</title>
+<style>
+/* ---------------------------------------------------------------- tokens
+   Carried over from SunWatch, which reads well at full brightness in a shop.
+   Paper ground, near-black ink, hairline rules. Colour is functional only:
+   green means the price is below normal, amber means act soon, red means
+   you have run out or something is spoiling. Nothing is coloured for looks.
+
+   Every number is set in mono with tabular figures — quantities and prices
+   are the content of this app, so they get the instrument face and the
+   prose gets out of the way.
+------------------------------------------------------------------------ */
+:root{
+  --paper:#f7f5f0; --card:#fffdf9; --ink:#14120e; --mute:#6f6a5e;
+  --faint:#9c9689; --rule:#ddd8cb; --rule2:#eae5d9;
+  --deal:#1a6b46; --dealbg:#e8f2ec;
+  --need:#a1590f; --needbg:#f8eedf;
+  --gone:#9d2c20; --gonebg:#f8e8e5;
+  --tap:44px;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+body{
+  background:var(--paper); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.45; touch-action:manipulation;
+  padding-bottom:calc(70px + env(safe-area-inset-bottom));
+  overscroll-behavior-y:contain; overflow-x:hidden;
+  max-width:100vw;
+}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ------------------------------------------------------------------ shell */
+header{
+  /* Deliberately not sticky. A sticky header over a long list of cards with
+     clipped corners is what leaves paint trails on iOS Safari, and the nav at
+     the bottom already gives a fixed anchor. */
+  background:var(--paper);
+  padding:calc(12px + env(safe-area-inset-top)) 16px 10px;
+  border-bottom:1px solid var(--rule);
+}
+.hrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+h1{font-size:17px;font-weight:650;letter-spacing:-.01em}
+.hsub{font-size:12.5px;color:var(--mute);margin-top:2px}
+main{padding:14px 14px 24px;max-width:640px;margin:0 auto;overflow-x:hidden;width:100%}
+.panel{display:none}
+.panel.on{display:block}
+h2{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;
+   color:var(--faint);margin:22px 0 9px}
+h2:first-child{margin-top:2px}
+.empty{border:1px dashed var(--rule);border-radius:10px;padding:20px 16px;
+  text-align:center;color:var(--mute);font-size:13.5px}
+.empty b{display:block;color:var(--ink);font-size:15px;font-weight:600;margin-bottom:5px}
+
+/* ------------------------------------------------------------------- card */
+.card{
+  background:var(--card);border:1px solid var(--rule);border-radius:12px;
+  padding:13px 14px;margin-bottom:9px;
+}
+/* The left edge is the status. A border rather than an absolutely positioned
+   pseudo-element, so nothing has to be clipped to the rounded corner. */
+.card.act{border-left-width:3px;padding-left:12px}
+.card.s-deal{border-left-color:var(--deal)}
+.card.s-need{border-left-color:var(--need)}
+.card.s-out{border-left-color:var(--gone)}
+.chead{display:flex;align-items:center;gap:9px;justify-content:space-between}
+.cname{font-size:15.5px;font-weight:640;letter-spacing:-.01em}
+.badge{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 7px;border-radius:4px;white-space:nowrap}
+.b-deal{background:var(--dealbg);color:var(--deal)}
+.b-need{background:var(--needbg);color:var(--need)}
+.b-out{background:var(--gonebg);color:var(--gone)}
+.b-off{background:#eee9dd;color:var(--mute)}
+
+/* ------------------------------------------------- signature: the burn-down
+   How many days of this you have left, drawn as the cupboard emptying. The
+   dotted upright is the point at which you want to be buying again; the
+   hatched tail is what the suggested purchase would add. Same component is
+   reused live inside the buy sheet, so the preview is literally the gauge
+   you were just looking at. */
+.gauge{margin:10px 0 2px}
+.track{position:relative;height:9px;background:#ece7db;border-radius:5px;overflow:hidden}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink)}
+.card.s-need .fill{background:var(--need)}
+.card.s-out .fill{background:var(--gone)}
+.ahead{position:absolute;top:0;bottom:0;border-radius:0 5px 5px 0;background:#9ecdb4}
+.notch{position:absolute;top:0;bottom:0;width:1px;background:#8e8878}
+.gsub{display:flex;justify-content:space-between;gap:8px;margin-top:6px;
+  font-size:12px;color:var(--mute)}
+.gsub .num{color:var(--ink)}
+
+/* ------------------------------------------------- signature: the shelf tag
+   The artifact this whole app is about. Store in the black bar, pack price
+   large, price-per-unit beneath it because that is the number that actually
+   decides anything. */
+.tag{border:1px solid var(--ink);border-radius:7px;margin:11px 0 0;background:#fff}
+.tag-store{background:var(--ink);color:var(--paper);font-size:9.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;padding:5px 10px;
+  border-radius:5px 5px 0 0;display:flex;justify-content:space-between;gap:8px}
+.tag-body{padding:9px 11px 10px}
+.tag-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tag-price{font-size:22px;font-weight:680;line-height:1.05}
+.tag-unit{font-size:13px;font-weight:600;color:var(--deal)}
+.tag-was{font-size:11.5px;color:var(--faint);text-decoration:line-through}
+.tag-name{font-size:11.5px;color:var(--mute);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.why{font-size:13px;color:var(--mute);margin-top:10px;line-height:1.4}
+.why b{color:var(--ink);font-weight:600}
+.foot{display:flex;justify-content:space-between;gap:8px;margin-top:10px;
+  padding-top:9px;border-top:1px solid var(--rule2);font-size:11.5px;color:var(--faint)}
+.foot .num{color:var(--mute)}
+.warn{font-size:12px;color:var(--gone);margin-top:8px;display:flex;gap:6px}
+.warn::before{content:"▲";font-size:9px;line-height:1.6;flex:none}
+
+/* ---------------------------------------------------------------- controls */
+.row{display:flex;gap:8px;margin-top:11px;align-items:stretch}
+.btn{background:var(--ink);color:var(--paper);border-radius:8px;padding:0 14px;
+  min-height:var(--tap);font-size:14px;font-weight:600;display:flex;
+  align-items:center;justify-content:center;gap:7px;flex:1;text-align:center}
+.btn.deal{background:var(--deal)}
+.btn.need{background:var(--need)}
+.btn:active{opacity:.75}
+.btn.ghost{background:none;color:var(--ink);border:1px solid var(--rule);flex:none;
+  min-width:var(--tap);padding:0 12px;font-weight:500}
+.btn.sm{min-height:34px;font-size:13px;padding:0 11px;flex:none}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.chev{font-size:13px}
+
+.slim{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  padding:11px 2px;min-height:var(--tap)}
+.slim .cname{flex:none;min-width:72px;max-width:38%}
+.slim .track{flex:1;height:7px;min-width:48px}
+.slim .r{font-size:12px;color:var(--mute);flex:none;text-align:right;min-width:88px;
+  white-space:nowrap}
+
+/* ------------------------------------------------------------------ fields */
+.f{margin-top:11px}
+.f label{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+input[type=text],input[type=number],input[type=date],input[type=search],select{
+  -webkit-appearance:none;appearance:none;width:100%;background:#fff;border:1px solid var(--rule);border-radius:8px;
+  padding:10px 11px;font-size:16px;min-height:var(--tap);
+  font-family:var(--mono);font-variant-numeric:tabular-nums}
+input[type=text],input[type=search],select{font-family:var(--sans)}
+input::placeholder{color:#b8b2a4;font-family:var(--sans)}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.hint{font-size:11.5px;color:var(--faint);margin-top:5px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.tg{border:1px solid var(--rule);background:#fff;border-radius:20px;padding:7px 11px;
+  font-size:12.5px;min-height:34px;display:flex;align-items:center}
+.tg.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* ------------------------------------------------------------------ detail */
+.detail{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule2)}
+.detail.on{display:block}
+.lo{display:flex;align-items:center;gap:8px;padding:10px 0;
+  border-bottom:1px solid var(--rule2);min-width:0}
+.lo:last-child{border-bottom:0}
+.lo-m{flex:1;min-width:0;overflow:hidden}
+.lo-n{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lo-s{font-size:11.5px;color:var(--faint);margin-top:2px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.lo-p{text-align:right;flex:none;max-width:72px}
+.lo-u{font-size:13.5px;font-weight:640}
+.lo-w{font-size:11px;color:var(--faint)}
+.x{color:var(--faint);font-size:19px;line-height:1;padding:8px;flex:none;min-width:36px}
+.best{color:var(--deal);font-weight:640}
+
+.res{display:flex;align-items:center;gap:10px;padding:10px 0;
+  border-bottom:1px solid var(--rule2);width:100%;max-width:100%;text-align:left;
+  overflow:hidden;min-width:0}
+.res:last-child{border-bottom:0}
+.res-m{flex:1;min-width:0;overflow:hidden}
+.res .lo-n{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res .lo-s{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plus{border:1px solid var(--rule);border-radius:7px;min-width:38px;min-height:38px;
+  display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;
+  flex-shrink:0}
+.plus.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.detail{overflow:hidden;max-width:100%}
+[id^="res-"]{overflow:hidden;max-width:100%}
+
+/* ------------------------------------------------------------------- lots */
+.lot{display:flex;align-items:center;gap:10px;padding:10px 0;
+  border-bottom:1px solid var(--rule2);cursor:pointer}
+.lot:last-child{border-bottom:0}
+.lot:active{opacity:.75}
+.lot-m{flex:1;min-width:0}
+.lot-q{font-size:14px;font-weight:620}
+.lot-s{font-size:11.5px;color:var(--mute);margin-top:2px}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--need);margin-right:5px;vertical-align:middle}
+.soon{color:var(--gone)}
+
+/* ------------------------------------------------------------------ money */
+.big{font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:38px;font-weight:600;letter-spacing:-.03em;line-height:1}
+.big small{font-size:15px;font-weight:500;color:var(--mute);letter-spacing:0}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--rule2);font-size:13.5px}
+.kv:last-child{border-bottom:0}
+.kv span:first-child{color:var(--mute)}
+.bar{height:10px;background:#ece7db;border-radius:5px;overflow:hidden;margin:9px 0 5px;
+  position:relative}
+.bar i{display:block;height:100%;background:var(--ink);border-radius:5px}
+.bar i.over{background:var(--gone)}
+svg.chart{width:100%;height:150px;display:block;margin-top:4px}
+.rc{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule2);font-size:13px}
+.rc:last-child{border-bottom:0}
+.rc-m{flex:1;min-width:0}
+.rc-s{font-size:11.5px;color:var(--faint);margin-top:2px}
+.rc-p{text-align:right;flex:none}
+.save{color:var(--deal);font-size:11.5px}
+
+.packin{width:62px;flex:none;padding:7px 6px;text-align:center;font-size:14px;
+  min-height:36px;border-radius:6px}
+.kv .save{font-size:inherit}
+.res{background:none;border:0}
+.slim{cursor:pointer}
+
+/* -------------------------------------------------------------------- nav */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;
+  background:var(--card);border-top:1px solid var(--rule);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:9px 2px 8px;font-size:10px;letter-spacing:.05em;
+  color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:3px;
+  min-height:56px;justify-content:center;position:relative}
+nav button .g{font-size:17px;line-height:1}
+nav button.on{color:var(--ink);font-weight:640}
+nav button.on::after{content:"";position:absolute;top:0;left:26%;right:26%;height:2px;
+  background:var(--ink)}
+nav .pip{position:absolute;top:7px;right:calc(50% - 19px);min-width:15px;height:15px;
+  border-radius:8px;background:var(--need);color:#fff;font-size:9.5px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;padding:0 4px}
+
+/* ------------------------------------------------------------------ sheet */
+.modal{position:fixed;inset:0;z-index:60;background:rgba(20,18,14,.42);
+  display:none;align-items:flex-end;justify-content:center}
+.modal.on{display:flex}
+.sheet{background:var(--paper);width:100%;max-width:640px;
+  border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height:92vh;overflow-y:auto}
+.sheet h3{font-size:17px;font-weight:650;letter-spacing:-.01em}
+.sheet .sub{font-size:12.5px;color:var(--mute);margin-top:3px}
+.prev{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:12px;margin-top:13px}
+/* Centred with left/right rather than a transform: a fixed, transformed,
+   fading element is the single most reliable way to get a ghost on iOS. */
+#toast{position:fixed;left:12px;right:12px;bottom:calc(78px + env(safe-area-inset-bottom));
+  margin:0 auto;width:max-content;max-width:calc(100% - 24px);
+  background:var(--ink);color:var(--paper);
+  padding:10px 15px;border-radius:8px;font-size:13.5px;z-index:80;
+  visibility:hidden;opacity:0;pointer-events:none;transition:opacity .18s;text-align:center}
+#toast.on{visibility:visible;opacity:1}
+.note{background:var(--needbg);border:1px solid #e6d5b8;border-radius:9px;
+  padding:11px 12px;font-size:13px;margin-bottom:12px;display:flex;
+  justify-content:space-between;align-items:center;gap:10px}
+.note.ok{background:var(--dealbg);border-color:#c8e0d3}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1 id="hTitle">Today</h1>
+    <div class="num" id="hRight" style="font-size:12.5px;color:var(--mute)"></div>
+  </div>
+  <div class="hsub" id="hSub"></div>
+</header>
+
+<main>
+  <section class="panel on" id="p-today"><div id="todayBody"></div></section>
+  <section class="panel" id="p-stock"><div id="stockBody"></div></section>
+  <section class="panel" id="p-money"><div id="moneyBody"></div></section>
+  <section class="panel" id="p-plan"><div id="planBody"></div></section>
+</main>
+
+<nav>
+  <button data-tab="today" class="on"><span class="g">◎</span>Today<span class="pip" id="pip" hidden></span></button>
+  <button data-tab="stock"><span class="g">▤</span>Stock</button>
+  <button data-tab="money"><span class="g">◪</span>Money</button>
+  <button data-tab="plan"><span class="g">≡</span>Plan</button>
+</nav>
+
+<!-- Log a purchase ------------------------------------------------------- -->
+<div class="modal" id="mBuy">
+  <div class="sheet">
+    <h3 id="buyTitle">Buy</h3>
+    <div class="sub" id="buySub"></div>
+
+    <div class="f">
+      <label>Product</label>
+      <select id="buyProduct"></select>
+    </div>
+
+    <div class="f2">
+      <div class="f"><label>Packs</label>
+        <input id="buyPacks" type="number" min="1" step="1" inputmode="numeric"></div>
+      <div class="f"><label>Price per pack</label>
+        <input id="buyPrice" type="number" min="0" step="0.01" inputmode="decimal"></div>
+    </div>
+
+    <div class="f">
+      <label>Best before</label>
+      <div class="tags" id="buyTags"></div>
+      <input id="buyExp" type="date" style="margin-top:7px">
+    </div>
+
+    <div class="prev" id="buyPrev"></div>
+
+    <div class="row">
+      <button class="btn ghost" data-act="close">Cancel</button>
+      <button class="btn" data-act="confirmBuy">Log purchase</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add stock you already have ------------------------------------------- -->
+<div class="modal" id="mStock">
+  <div class="sheet">
+    <h3 id="stkTitle">Add stock</h3>
+    <div class="sub" id="stkSub"></div>
+
+    <div class="f"><label id="stkQtyLabel">Amount</label>
+      <input id="stkQty" type="number" min="0" step="0.001" inputmode="decimal"></div>
+
+    <div class="f">
+      <label>Best before</label>
+      <div class="tags" id="stkTags"></div>
+      <input id="stkExp" type="date" style="margin-top:7px">
+    </div>
+
+    <div class="prev" id="stkPrev"></div>
+
+    <div class="row">
+      <button class="btn ghost" data-act="close">Cancel</button>
+      <button class="btn" data-act="confirmStock">Add to stock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create or edit a meal item ------------------------------------------- -->
+<div class="modal" id="mItem">
+  <div class="sheet">
+    <h3 id="itemTitle">New item</h3>
+    <div class="sub">What you eat and how fast. Set once, then leave it alone.</div>
+
+    <div class="f"><label>Name</label>
+      <input id="itName" type="text" placeholder="Eggs" autocomplete="off"></div>
+
+    <div class="f"><label>Measured in</label>
+      <div class="tags" id="itUnit"></div></div>
+
+    <div class="f2">
+      <div class="f"><label>Per month</label>
+        <input id="itMonth" type="number" min="0" step="any" inputmode="decimal"></div>
+      <div class="f"><label>Per day</label>
+        <input id="itDay" type="number" min="0" step="any" inputmode="decimal"></div>
+    </div>
+    <div class="hint" id="itRateHint"></div>
+
+    <div class="f2">
+      <div class="f"><label>Keeps, unopened</label>
+        <input id="itShelf" type="number" min="1" step="1" inputmode="numeric"></div>
+      <div class="f"><label>Keeps, once open</label>
+        <input id="itOpen" type="number" min="0" step="1" inputmode="numeric"></div>
+    </div>
+    <div class="hint">Days. Leave "once open" at 0 for anything that keeps the same
+      after opening, like pasta or rice.</div>
+
+    <div class="f"><label>Buy again when down to</label>
+      <input id="itCover" type="number" min="1" step="1" inputmode="numeric"></div>
+    <div class="hint">Days of supply left. Blank uses the default in Plan.</div>
+
+    <div class="row">
+      <button class="btn ghost" data-act="close">Cancel</button>
+      <button class="btn" data-act="confirmItem">Save</button>
+    </div>
+    <div class="row" id="itDeleteRow" hidden>
+      <button class="btn ghost" data-act="deleteItem" style="flex:1;color:var(--gone)">
+        Delete this item</button>
+    </div>
+  </div>
+</div>
+
+<!-- Close the month ------------------------------------------------------- -->
+<div class="modal" id="mReset">
+  <div class="sheet">
+    <h3>Close the month</h3>
+    <div class="sub" id="resetSub"></div>
+    <div class="prev" id="resetPrev"></div>
+    <div class="hint" style="margin-top:10px">
+      Your stock, lookout lists and plan all stay exactly as they are. Only the
+      month's spending, savings and receipts are filed away.</div>
+    <div class="row">
+      <button class="btn ghost" data-act="close">Not yet</button>
+      <button class="btn" data-act="confirmReset">File it and start fresh</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept="application/json" hidden>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+/* ============================================================================
+ * Kurv engine — the whole decision model.
+ *
+ * One idea holds it together: you state a fixed monthly plan ("36 eggs, 3 kg
+ * pasta, 5 L milk"), and everything else is derived. The app never guesses
+ * your consumption from receipts, which is what made the last version need so
+ * much explaining on screen.
+ *
+ * Two purchases exist and only two:
+ *   needful      you are running low and nothing is on offer  -> one pack
+ *   opportunity  a real offer exists                          -> as many packs
+ *                as the item's own budget affords and its shelf life survives
+ *
+ * No dependency on the DOM, so it runs under node for tests.
+ * ==========================================================================*/
+
+var Kurv = (function () {
+  "use strict";
+
+  var MS_DAY = 86400000;
+  var MONTH = 30.437; // mean Gregorian month, so "36 a month" means 36
+  var EPS = 1e-9;
+
+  /* ======================================================== days and dates
+   * Everything internal is an integer local day number. Storing timestamps
+   * meant a session that crossed 02:00 changed day in UTC but not in the
+   * device's local timezone, and the cover counts drifted by one.
+   */
+
+  function dayOf(d) {
+    d = d || new Date();
+    return Math.floor(
+      Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_DAY
+    );
+  }
+  function dayFromISO(iso) {
+    if (!iso || String(iso).length < 10) return null;
+    var y = +String(iso).slice(0, 4),
+      m = +String(iso).slice(5, 7),
+      d = +String(iso).slice(8, 10);
+    if (!isFinite(y) || !isFinite(m) || !isFinite(d)) return null;
+    return Math.floor(Date.UTC(y, m - 1, d) / MS_DAY);
+  }
+  function isoFromDay(n) {
+    if (n === null || n === undefined || !isFinite(n)) return "";
+    return new Date(n * MS_DAY).toISOString().slice(0, 10);
+  }
+  function today() {
+    return dayOf(new Date());
+  }
+  function monthKeyOf(d) {
+    d = d || new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  /** Human date, short form, without dragging in Intl every call. */
+  var MON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+  function dayLabel(n) {
+    if (n === null || n === undefined || !isFinite(n)) return "—";
+    var d = new Date(n * MS_DAY);
+    var s = d.getUTCDate() + " " + MON[d.getUTCMonth()];
+    // Only show the year when it is not the current one, so the common case
+    // stays short and "3 aug" can never be mistaken for today.
+    var y = d.getUTCFullYear();
+    return y === new Date().getFullYear() ? s : s + " " + y;
+  }
+
+  /* ================================================================== units
+   * A meal item has exactly one canonical unit, fixed by the plan. "36 eggs a
+   * month" makes it pieces, and a 15-stk tray then converts cleanly. The old
+   * version let a kg list hold a stk product, which silently recorded 0.00 kg
+   * and made every downstream number wrong.
+   */
+
+  var CANON = ["pc", "kg", "L"];
+  var UNIT_LABEL = { pc: "pcs", kg: "kg", L: "L" };
+  var UNIT_PER = { pc: "pc", kg: "kg", L: "L" }; // what goes after "RM/"
+  var UNIT_NOUN = { pc: "pieces", kg: "kilos", L: "litres" };
+
+  var TO_BASE = {
+    g: ["kg", 0.001], gr: ["kg", 0.001], gram: ["kg", 0.001], grams: ["kg", 0.001],
+    kg: ["kg", 1], kilo: ["kg", 1], kilogram: ["kg", 1],
+    ml: ["L", 0.001], cl: ["L", 0.01], dl: ["L", 0.1],
+    l: ["L", 1], lt: ["L", 1], ltr: ["L", 1], liter: ["L", 1], litre: ["L", 1],
+    stk: ["pc", 1], st: ["pc", 1], stks: ["pc", 1], pc: ["pc", 1], pcs: ["pc", 1],
+    pk: ["pc", 1], pak: ["pc", 1], pakke: ["pc", 1], pkt: ["pc", 1],
+    styk: ["pc", 1], piece: ["pc", 1], pieces: ["pc", 1], ps: ["pc", 1],
+    unit: ["pc", 1], units: ["pc", 1], each: ["pc", 1], ea: ["pc", 1],
+    biji: ["pc", 1], helai: ["pc", 1], keping: ["pc", 1], set: ["pc", 1],
+    btl: ["pc", 1], bottle: ["pc", 1], tin: ["pc", 1], can: ["pc", 1],
+    pack: ["pc", 1], packet: ["pc", 1], bundle: ["pc", 1],
+  };
+
+  function cleanUnit(u) {
+    return String(u || "").trim().toLowerCase().replace(/[.\s_-]/g, "");
+  }
+
+  /** One quantity+unit pair into a canonical unit, or null if incompatible. */
+  function toCanon(qty, unit, canon) {
+    var q = Number(qty);
+    if (!isFinite(q) || q <= 0) return null;
+    var e = TO_BASE[cleanUnit(unit)];
+    if (!e || e[0] !== canon) return null;
+    return q * e[1];
+  }
+
+  /* ============================================================ pack parsing
+   * The catalog's own quantity/unit columns are right most of the time and
+   * blank or wrong the rest, with the real size sitting in the name:
+   * "Telur Gred A 1 x 30's". So try the columns, then read the name,
+   * and always keep the number visible so it can be corrected by hand.
+   */
+
+  var NUM = "(\\d+(?:[.,]\\d+)?)";
+  var UNITS = "(kg|g|gram|gr|ml|cl|dl|liter|litre|ltr|l|stk|styk|st|stks|pk|pakke|pak|pkt|pcs|pc)";
+
+  function parsePack(name, colQty, colUnit, canon) {
+    // 1. the catalog columns, when they agree with the item's unit
+    var direct = toCanon(colQty, colUnit, canon);
+
+    // 2. every size-looking token in the name, converted where possible
+    var found = [];
+    var text = " " + String(name || "").toLowerCase().replace(/,/g, " ") + " ";
+
+    // "3 x 500 g" / "1× 15 stk" — a multiplier and a size
+    var reMul = new RegExp(NUM + "\\s*[x×*]\\s*" + NUM + "\\s*" + UNITS + "\\b", "g");
+    var m;
+    while ((m = reMul.exec(text))) {
+      var mult = Number(m[1].replace(",", "."));
+      var size = Number(m[2].replace(",", "."));
+      var v = toCanon(size, m[3], canon);
+      if (v !== null && mult > 0) found.push(v * mult);
+    }
+
+    // "500 g" / "15 stk" / "1 L"
+    var reOne = new RegExp(NUM + "\\s*" + UNITS + "\\b", "g");
+    while ((m = reOne.exec(text))) {
+      var v2 = toCanon(m[1].replace(",", "."), m[2], canon);
+      if (v2 !== null) found.push(v2);
+    }
+
+    // "10-pak" / "6 pack" — a bare count, only meaningful for pieces
+    if (canon === "pc") {
+      var rePak = new RegExp(NUM + "\\s*-?\\s*(pak|pack|pk|stk)\\b", "g");
+      while ((m = rePak.exec(text))) {
+        var n = Number(m[1].replace(",", "."));
+        if (n > 0) found.push(n);
+      }
+    }
+
+    if (direct !== null) {
+      // A column reading of exactly 1 next to a bigger number in the name is
+      // the "1× 15 pcs" case: the column counted trays, the name counted eggs.
+      var bigger = found.filter(function (x) { return x > direct + EPS; });
+      if (direct === 1 && bigger.length) return Math.max.apply(null, bigger);
+      return direct;
+    }
+    if (found.length) return Math.max.apply(null, found);
+    return null;
+  }
+
+  /* ================================================================= search
+   * The catalog mixes English and Bahasa Malaysia product names and is typed
+   * on a phone, so accents collapse to plain letters before anything is
+   * compared — otherwise "telor" and "ayam" match nothing when the catalog
+   * spells it "telur"/"ayam" with different capitalisation or punctuation.
+   */
+
+  function fold(s) {
+    var t = String(s || "");
+    if (t.normalize) t = t.normalize("NFC");
+    t = t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    t = t.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    return t.replace(/\s+/g, " ").trim();
+  }
+
+  // English in, Bahasa Malaysia out — plus common alternate spellings
+  // ("telor"/"telur", "sayur"/"sayuran") that people actually type. Typing
+  // "eggs" in an English interface is a fair thing to try, and previously
+  // returned nothing when a listing was only titled in Malay.
+  var SYN = {
+    egg: "telur", eggs: "telur", telor: "telur",
+    milk: "susu", freshmilk: "susu segar",
+    chicken: "ayam", beef: "daging lembu", mutton: "daging kambing",
+    lamb: "daging kambing", pork: "daging babi",
+    fish: "ikan", prawn: "udang", prawns: "udang", shrimp: "udang",
+    squid: "sotong", crab: "ketam", cockles: "kerang",
+    bread: "roti", butter: "mentega", cheese: "keju",
+    rice: "beras", flour: "tepung", sugar: "gula", salt: "garam",
+    coffee: "kopi", tea: "teh", water: "air mineral",
+    oil: "minyak masak", cookingoil: "minyak masak", oliveoil: "minyak zaitun",
+    soysauce: "kicap", soy: "kicap", vinegar: "cuka", chilli: "cili",
+    chili: "cili", chillipaste: "sambal", sambal: "sambal",
+    onion: "bawang", onions: "bawang besar", garlic: "bawang putih",
+    shallot: "bawang merah", shallots: "bawang merah", ginger: "halia",
+    potato: "kentang", potatoes: "kentang", tomato: "tomato",
+    tomatoes: "tomato", cucumber: "timun", carrot: "lobak merah",
+    carrots: "lobak merah", cabbage: "kobis", spinach: "bayam",
+    longbeans: "kacang panjang", beansprouts: "taugeh",
+    apple: "epal", apples: "epal", banana: "pisang", bananas: "pisang",
+    orange: "oren", mango: "mangga", watermelon: "tembikai",
+    coconut: "kelapa", coconutmilk: "santan",
+    noodles: "mi", noodle: "mi", instantnoodles: "mi segera",
+    yeemee: "mi", beehoon: "bihun", vermicelli: "bihun",
+    tofu: "tauhu", taupok: "taupok", beancurd: "tauhu",
+    yoghurt: "yogurt", yogurt: "yogurt", cream: "krim",
+    honey: "madu", biscuits: "biskut", crackers: "biskut",
+    chocolate: "coklat", cereal: "bijirin", oats: "oat", oatmeal: "oat",
+    juice: "jus", cordial: "sirap", detergent: "detergen",
+    diapers: "lampin", tissue: "tisu", softdrink: "minuman bergas",
+    frozen: "sejuk beku", organic: "organik",
+  };
+
+  /** Each query word becomes the set of spellings that should count as a hit. */
+  function queryTerms(q) {
+    var raw = String(q || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+    return raw.map(function (w) {
+      var alts = [w];
+      if (SYN[w]) alts.push(SYN[w]);
+      // "eggs" -> "egg" -> "telur"; a lazy singular so plurals don't miss
+      if (w.length > 3 && w.slice(-1) === "s" && SYN[w.slice(0, -1)])
+        alts.push(SYN[w.slice(0, -1)]);
+      return alts.map(fold).filter(function (x) { return x.length; });
+    }).filter(function (g) { return g.length; });
+  }
+
+  /**
+   * Score one folded name against the term groups. Whole-word hits beat
+   * inside-a-word hits, which is what stops "telur" from drowning in "acar telur".
+   * Returns -1 when any term group is missing entirely.
+   */
+  function scoreName(folded, groups) {
+    var words = folded.split(" ");
+    var total = 0;
+    for (var i = 0; i < groups.length; i++) {
+      var best = -1;
+      for (var j = 0; j < groups[i].length; j++) {
+        var t = groups[i][j];
+        var s = -1;
+        for (var w = 0; w < words.length; w++) {
+          if (words[w] === t) { s = Math.max(s, 100 - w * 2); break; }
+          if (words[w].indexOf(t) === 0) s = Math.max(s, 70 - w * 2);
+          else if (words[w].indexOf(t) >= 0) s = Math.max(s, 40 - w * 2);
+        }
+        if (s > best) best = s;
+      }
+      if (best < 0) return -1;
+      total += best;
+    }
+    // Short, specific names are usually the plain product; long ones are
+    // flavoured variants of it.
+    return total - Math.min(20, folded.length / 6);
+  }
+
+  /* ================================================== consumption and stock */
+
+  function rateOf(item) {
+    var m = Number(item && item.perMonth);
+    return isFinite(m) && m > 0 ? m / MONTH : 0;
+  }
+
+  function effExp(lot, openLife) {
+    if (lot.open === null || lot.open === undefined) return lot.exp;
+    if (!openLife || openLife <= 0) return lot.exp;
+    return Math.min(lot.exp, lot.open + openLife);
+  }
+
+  /** FEFO, but you finish the pack you already opened before starting another. */
+  function fefo(lots, openLife) {
+    return lots.slice().sort(function (a, b) {
+      var ao = a.open !== null && a.open !== undefined ? 0 : 1;
+      var bo = b.open !== null && b.open !== undefined ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      var ae = effExp(a, openLife), be = effExp(b, openLife);
+      if (ae === null && be === null) return (a.bought || 0) - (b.bought || 0);
+      if (ae === null) return 1;
+      if (be === null) return -1;
+      if (ae !== be) return ae - be;
+      return (a.bought || 0) - (b.bought || 0);
+    });
+  }
+
+  /**
+   * Step day by day from `from` to `to`, eating at the plan rate and throwing
+   * out whatever expires. Mutates the lots it is given, so callers that only
+   * want a forecast pass a copy.
+   *
+   * Day-stepping rather than closed-form because expiry and consumption
+   * interleave: a pack can spoil halfway through the month and the packs
+   * behind it then last longer. Bounded to a year of catch-up.
+   */
+  function run(lots, rate, openLife, from, to, opts) {
+    opts = opts || {};
+    var wasted = 0, short = 0, runOut = null, spoiled = [];
+    var start = from, end = to;
+    if (end - start > 400) start = end - 400;
+
+    for (var d = start; d < end; d++) {
+      var need = rate;
+      var order = fefo(lots, openLife);
+      for (var i = 0; i < order.length && need > EPS; i++) {
+        var lot = order[i];
+        if (lot.qty <= EPS) continue;
+        if (lot.open === null || lot.open === undefined) lot.open = d;
+        var take = Math.min(lot.qty, need);
+        lot.qty -= take;
+        need -= take;
+      }
+      if (need > EPS) {
+        short += need;
+        if (runOut === null) runOut = d;
+      }
+      // Anything past its date at the end of the day is gone.
+      for (var k = lots.length - 1; k >= 0; k--) {
+        var L = lots[k];
+        if (L.qty <= EPS) { lots.splice(k, 1); continue; }
+        var e = effExp(L, openLife);
+        if (e !== null && e <= d) {
+          wasted += L.qty;
+          spoiled.push({ qty: L.qty, day: d, product: L.product || "", exp: L.exp });
+          lots.splice(k, 1);
+        }
+      }
+      if (opts.stopWhenEmpty && !lots.length) {
+        if (runOut === null) runOut = d + 1;
+        break;
+      }
+    }
+    return { wasted: wasted, short: short, runOut: runOut, spoiled: spoiled };
+  }
+
+  function stockOf(item) {
+    var t = 0;
+    for (var i = 0; i < item.lots.length; i++) t += Math.max(0, item.lots[i].qty);
+    return t;
+  }
+
+  /** Bring an item's lots up to today. Called on load and after every change. */
+  function reconcile(item, todayDay) {
+    if (!item.lots) item.lots = [];
+    if (item.asOf === null || item.asOf === undefined) item.asOf = todayDay;
+    var r = { wasted: 0, short: 0, spoiled: [] };
+    if (todayDay > item.asOf) {
+      r = run(item.lots, rateOf(item), item.openLife || 0, item.asOf, todayDay);
+      item.asOf = todayDay;
+      item.wasted = (item.wasted || 0) + r.wasted;
+    }
+    // Do not force-open the front pack. Opening is set when you actually start
+    // eating it (run), or when you mark it open on the Stock tab. That way a
+    // sealed pack keeps its full unopened shelf life until you open it.
+    return r;
+  }
+
+  /** Days until the cupboard is empty, from today, at the plan rate. */
+  function coverOf(item, todayDay) {
+    var rate = rateOf(item);
+    if (rate <= 0) return Infinity;
+    var copy = cloneLots(item.lots);
+    var r = run(copy, rate, item.openLife || 0, todayDay, todayDay + 400, {
+      stopWhenEmpty: true,
+    });
+    var out = r.runOut === null ? todayDay + 400 : r.runOut;
+    return out - todayDay;
+  }
+
+  function cloneLots(lots) {
+    return lots.map(function (l) {
+      return { qty: l.qty, exp: l.exp, open: l.open === undefined ? null : l.open,
+               bought: l.bought, product: l.product };
+    });
+  }
+
+  /** The lot currently in use, and how long it has left once open. */
+  function openLot(item, todayDay) {
+    var order = fefo(item.lots, item.openLife || 0);
+    for (var i = 0; i < order.length; i++) if (order[i].qty > EPS) {
+      var l = order[i];
+      var e = effExp(l, item.openLife || 0);
+      return {
+        lot: l,
+        isOpen: l.open !== null && l.open !== undefined,
+        expires: e,
+        daysLeft: e === null ? null : e - todayDay,
+      };
+    }
+    return null;
+  }
+
+  /* ================================================================ offers */
+
+  /**
+   * Every watched product priced per canonical unit, cheapest first, so the
+   * list itself is the ranking the person asked for.
+   */
+  function offers(item, lookup) {
+    var out = [];
+    for (var i = 0; i < item.watch.length; i++) {
+      var w = item.watch[i];
+      var row = lookup(w.key);
+      var pack = Number(w.pack);
+      if (!isFinite(pack) || pack <= 0) continue;
+      var price = row ? row.price : Number(w.lastPrice);
+      var regular = row ? (row.regular || row.price) : Number(w.lastRegular || w.lastPrice);
+      if (!isFinite(price) || price <= 0) continue;
+      if (!isFinite(regular) || regular <= 0) regular = price;
+      out.push({
+        key: w.key,
+        pack: pack,
+        store: row ? row.store : w.store || "",
+        name: row ? row.name : w.name || w.key,
+        price: price,
+        regular: regular,
+        since: row ? row.since : null,
+        unitPrice: price / pack,
+        regularUnit: regular / pack,
+        off: regular > price ? (regular - price) / regular : 0,
+        live: !!row,
+      });
+    }
+    out.sort(function (a, b) { return a.unitPrice - b.unitPrice; });
+    return out;
+  }
+
+  /** Cheapest regular unit price on the lookout list (best normal rate available). */
+  function typicalUnit(offs) {
+    var best = null;
+    for (var i = 0; i < offs.length; i++) {
+      if (best === null || offs[i].regularUnit < best) best = offs[i].regularUnit;
+    }
+    return best;
+  }
+
+  /**
+   * Highest regular unit price on the lookout list. Used for the monthly budget
+   * so the plan is the honest worst case: if you only ever paid the dearest
+   * normal price, this is what the month would cost.
+   */
+  function budgetUnit(offs) {
+    var hi = null;
+    for (var i = 0; i < offs.length; i++) {
+      if (hi === null || offs[i].regularUnit > hi) hi = offs[i].regularUnit;
+    }
+    return hi;
+  }
+
+  function budgetOf(item, offs) {
+    var t = budgetUnit(offs);
+    if (t === null || !isFinite(item.perMonth)) return null;
+    return item.perMonth * t;
+  }
+
+  /* ========================================================== buy decisions */
+
+  /**
+   * How many packs of `offer` can be absorbed without waste. Simulated rather
+   * than solved, because existing lots have their own expiry dates and the
+   * arithmetic version got them wrong.
+   */
+  function packsBeforeWaste(item, offer, shelfDays, todayDay, maxPacks) {
+    var rate = rateOf(item);
+    if (rate <= 0) return 0;
+    var openLife = item.openLife || 0;
+    var horizon = todayDay + Math.min(400, Math.max(60, shelfDays + 60));
+
+    var base = run(cloneLots(item.lots), rate, openLife, todayDay, horizon).wasted;
+
+    var best = 0;
+    for (var n = 1; n <= maxPacks; n++) {
+      var lots = cloneLots(item.lots);
+      for (var k = 0; k < n; k++) {
+        lots.push({ qty: offer.pack, exp: todayDay + shelfDays, open: null,
+                    bought: todayDay, product: offer.name });
+      }
+      var w = run(lots, rate, openLife, todayDay, horizon).wasted;
+      if (w > base + 1e-6) break;
+      best = n;
+    }
+    return best;
+  }
+
+  /**
+   * The verdict for one meal item. Four outcomes, and each names the reason it
+   * reached them so the card can say it in one line.
+   */
+  function decide(item, offs, todayDay, settings) {
+    var rate = rateOf(item);
+    var stock = stockOf(item);
+    var cover = coverOf(item, todayDay);
+    var cheapest = offs.length ? offs[0] : null;
+    var typ = typicalUnit(offs);
+    var budUnit = budgetUnit(offs);
+    var reorder = isFinite(item.coverDays) && item.coverDays > 0
+      ? item.coverDays : settings.coverDays;
+    var threshold = (settings.dealPct || 10) / 100;
+
+    var res = {
+      state: "ok", stock: stock, cover: cover, rate: rate,
+      best: cheapest, typical: typ, packs: 0, spend: 0, saving: 0,
+      budget: null, remaining: null, reason: "", capped: "",
+      // What today's cupboard loses to dates over the next fortnight, at the
+      // plan rate. This is the number the open-pack countdown exists for.
+      spoiling: run(cloneLots(item.lots), rate, item.openLife || 0,
+                    todayDay, todayDay + 14).wasted,
+    };
+    if (rate <= 0) { res.state = "off"; res.reason = "No monthly amount set yet."; return res; }
+    if (!cheapest) {
+      res.state = stock <= EPS ? "out" : "ok";
+      res.reason = "Nothing on the lookout list yet.";
+      return res;
+    }
+
+    // Monthly budget = plan qty × highest regular unit price on the lookout list.
+    var budget = budUnit === null ? null : item.perMonth * budUnit;
+    var spent = Number(item.spent) || 0;
+    res.budget = budget;
+    res.remaining = budget === null ? null : Math.max(0, budget - spent);
+
+    // A deal is real when either (a) the cheapest unit is meaningfully below the
+    // typical unit price across the lookout list, or (b) any watched product is
+    // discounted against its own regular. Prefer the cheapest true-deal offer
+    // for opportunity buys so a permanent low-price item does not hide a sale.
+    var bestDeal = null;
+    var i, o, ownOff;
+    for (i = 0; i < offs.length; i++) {
+      o = offs[i];
+      ownOff = o.regularUnit > 0 ? (o.regularUnit - o.unitPrice) / o.regularUnit : 0;
+      if (ownOff >= threshold) {
+        if (!bestDeal || o.unitPrice < bestDeal.unitPrice) bestDeal = o;
+      }
+    }
+    var offVsTyp = typ && typ > 0 ? (typ - cheapest.unitPrice) / typ : 0;
+    var isDeal = offVsTyp >= threshold || !!bestDeal;
+    var best = (isDeal && bestDeal) ? bestDeal : cheapest;
+    var offPct = best.regularUnit > 0
+      ? Math.max(0, (best.regularUnit - best.unitPrice) / best.regularUnit)
+      : Math.max(0, offVsTyp);
+    res.best = best;
+    res.off = offPct;
+
+    var low = stock <= EPS || cover <= reorder;
+
+    if (!low && !isDeal) {
+      res.reason = "Covered for " + fmtDays(cover) + ". No offer worth acting on.";
+      return res;
+    }
+
+    if (low && !isDeal) {
+      res.state = stock <= EPS ? "out" : "need";
+      res.packs = 1;
+      res.spend = best.price;
+      res.reason = stock <= EPS
+        ? "Out of stock and nothing is on offer — buy one."
+        : "Down to " + fmtDays(cover) + " and nothing is on offer — buy one.";
+      return res;
+    }
+
+    // A real offer: take as much as budget and shelf life allow.
+    var shelf = Number(item.shelfLife) > 0 ? Number(item.shelfLife) : 30;
+    var byShelf = packsBeforeWaste(item, best, shelf, todayDay, 40);
+    var byBudget = res.remaining === null ? 40
+      : Math.floor((res.remaining + 1e-6) / best.price);
+    var maxCover = settings.maxCover > 0 ? settings.maxCover : 120;
+    var byCover = Math.max(0, Math.floor((rate * maxCover - stock) / best.pack));
+
+    var n = Math.min(byShelf, byBudget, byCover);
+    // Say which of the three actually held it back, in the order that matters
+    // most to explain. If nothing bound, say nothing.
+    var capped = "";
+    if (n < 40) {
+      var caps = [[byShelf, "shelf life"], [byBudget, "the budget"],
+                  [byCover, "your stock ceiling"]];
+      caps.sort(function (a, b) { return a[0] - b[0]; });
+      if (caps[0][0] === n) capped = caps[0][1];
+    }
+
+    var unitSaving = Math.max(0, (best.regularUnit || typ || 0) - best.unitPrice);
+
+    if (n < 1) {
+      // Nothing fits cleanly. If we're out anyway, one pack still beats none.
+      if (low) {
+        res.state = stock <= EPS ? "out" : "need";
+        res.packs = 1;
+        res.spend = best.price;
+        res.saving = unitSaving * best.pack;
+        res.capped = byShelf < 1 ? "shelf life" : byBudget < 1 ? "budget" : "stock ceiling";
+        res.reason = byShelf < 1
+          ? "On offer, but a whole pack would go off before you finish it — take one."
+          : "On offer, but the budget is spent — take one anyway, you're low.";
+        return res;
+      }
+      res.reason = "On offer, but there is no room for it — " + (byShelf < 1
+        ? "a pack would spoil before you got through it." : "this month's budget is spent.");
+      res.state = "ok";
+      return res;
+    }
+
+    res.state = "deal";
+    res.packs = n;
+    res.spend = n * best.price;
+    res.saving = unitSaving * best.pack * n;
+    res.capped = capped;
+    var after = coverAfter(item, best, n, shelf, todayDay);
+    res.coverAfter = after;
+    res.reason =
+      Math.round(offPct * 100) + "% under the usual price. " +
+      n + (n === 1 ? " pack" : " packs") + " takes you to " + fmtDays(after) +
+      (capped ? ", and that is all " + capped + " allows." : ".");
+    return res;
+  }
+
+  function coverAfter(item, offer, n, shelfDays, todayDay) {
+    var lots = cloneLots(item.lots);
+    for (var k = 0; k < n; k++) {
+      lots.push({ qty: offer.pack, exp: todayDay + shelfDays, open: null,
+                  bought: todayDay, product: offer.name });
+    }
+    var r = run(lots, rateOf(item), item.openLife || 0, todayDay, todayDay + 400,
+                { stopWhenEmpty: true });
+    var out = r.runOut === null ? todayDay + 400 : r.runOut;
+    return out - todayDay;
+  }
+
+  /* ============================================================== formatting */
+
+  function fmtDays(d) {
+    if (!isFinite(d)) return "—";
+    if (d >= 400) return "over a year";
+    if (d >= 60) return Math.round(d / 30.437) + " months";
+    if (d >= 14) return Math.round(d / 7) + " weeks";
+    if (d <= 0) return "no days";
+    return Math.round(d) + (Math.round(d) === 1 ? " day" : " days");
+  }
+
+  function fmtQty(v, unit) {
+    if (!isFinite(v)) return "—";
+    if (unit === "pc") {
+      var r = Math.round(v * 10) / 10;
+      return String(Math.abs(r - Math.round(r)) < 0.05
+        ? Math.round(r) : r.toFixed(1).replace(".", ","));
+    }
+    // Enough decimals that 100 g (0.1 kg) and 250 ml stay readable.
+    if (v > 0 && v < 1) return v.toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
+    return (v >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(".", ",");
+  }
+
+  // Ringgit is written prefix-style ("RM12.50"), unlike the kroner suffix
+  // this engine used to output — so the currency mark lives inside these
+  // two functions and every call site that used to append " kr" by hand
+  // was cleaned up to stop doing that.
+  function kr(v) {
+    if (!isFinite(v)) return "—";
+    return "RM" + v.toFixed(2);
+  }
+  function kr0(v) {
+    if (!isFinite(v)) return "—";
+    return "RM" + Math.round(v).toLocaleString("en-MY");
+  }
+
+  return {
+    MS_DAY: MS_DAY, MONTH: MONTH, CANON: CANON,
+    UNIT_LABEL: UNIT_LABEL, UNIT_NOUN: UNIT_NOUN, UNIT_PER: UNIT_PER,
+    dayOf: dayOf, dayFromISO: dayFromISO, isoFromDay: isoFromDay,
+    today: today, monthKeyOf: monthKeyOf, dayLabel: dayLabel,
+    toCanon: toCanon, parsePack: parsePack,
+    fold: fold, queryTerms: queryTerms, scoreName: scoreName, SYN: SYN,
+    rateOf: rateOf, effExp: effExp, fefo: fefo, run: run, cloneLots: cloneLots,
+    stockOf: stockOf, reconcile: reconcile, coverOf: coverOf, openLot: openLot,
+    offers: offers, typicalUnit: typicalUnit, budgetUnit: budgetUnit, budgetOf: budgetOf,
+    packsBeforeWaste: packsBeforeWaste, decide: decide, coverAfter: coverAfter,
+    fmtDays: fmtDays, fmtQty: fmtQty, kr: kr, kr0: kr0,
+  };
+})();
+
+if (typeof module !== "undefined" && module.exports) module.exports = Kurv;
+</script>
+<script>
+/* ============================================================================
+ * Kurv — app layer. Storage, catalog, rendering, sheets.
+ * The decision model lives in the engine above; nothing here recalculates it.
+ * ==========================================================================*/
+(function () {
+"use strict";
+
+var K = Kurv;
+var $ = function (s, r) { return (r || document).querySelector(s); };
+var $$ = function (s, r) { return [].slice.call((r || document).querySelectorAll(s)); };
+
+/* ================================================================= storage */
+
+var LSKEY = "kurv.v3";
+var DEFAULTS = {
+  v: 3,
+  month: "",
+  settings: { coverDays: 7, dealPct: 10, maxCover: 120 },
+  items: [],
+  receipts: [],
+  archive: [],
+};
+var S = null;
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+function load() {
+  try {
+    var raw = localStorage.getItem(LSKEY);
+    S = raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(DEFAULTS));
+  } catch (e) {
+    S = JSON.parse(JSON.stringify(DEFAULTS));
+  }
+  // Fill in anything a newer build expects but an older save never wrote.
+  var d = DEFAULTS;
+  for (var k in d) if (!(k in S)) S[k] = JSON.parse(JSON.stringify(d[k]));
+  for (var sk in d.settings) if (!(sk in S.settings)) S.settings[sk] = d.settings[sk];
+  if (!S.month) S.month = K.monthKeyOf();
+  S.items.forEach(function (it) {
+    it.watch = it.watch || [];
+    it.lots = it.lots || [];
+    it.spent = Number(it.spent) || 0;
+    it.saved = Number(it.saved) || 0;
+    it.boughtQty = Number(it.boughtQty) || 0;
+    it.wasted = Number(it.wasted) || 0;
+    if (it.asOf === undefined || it.asOf === null) it.asOf = K.today();
+    it.lots.forEach(function (l) { if (l.open === undefined) l.open = null; });
+  });
+}
+
+var saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function () {
+    try { localStorage.setItem(LSKEY, JSON.stringify(S)); }
+    catch (e) { toast("Could not save — device storage is full."); }
+  }, 60);
+}
+
+/** Bring every item up to today. Cheap, and keeps stored state truthful. */
+function reconcileAll() {
+  var t = K.today();
+  var spoiled = 0;
+  S.items.forEach(function (it) {
+    var r = K.reconcile(it, t);
+    spoiled += r.wasted;
+  });
+  if (spoiled > 0) save();
+  return spoiled;
+}
+
+/* ================================================================= catalog
+ * Rows are [store, name, price, quantity, unit, regular, since, high],
+ * built nightly by the Action. Kept in IndexedDB because it is too big to
+ * sit in localStorage next to your own data.
+ */
+
+var CAT = { rows: [], byKey: new Map(), folded: [], meta: null, ready: false, error: "" };
+
+function idb() {
+  return new Promise(function (res, rej) {
+    var q = indexedDB.open("kurv", 1);
+    q.onupgradeneeded = function () { q.result.createObjectStore("kv"); };
+    q.onsuccess = function () { res(q.result); };
+    q.onerror = function () { rej(q.error); };
+  });
+}
+function idbGet(k) {
+  return idb().then(function (db) {
+    return new Promise(function (res) {
+      var r = db.transaction("kv").objectStore("kv").get(k);
+      r.onsuccess = function () { res(r.result || null); };
+      r.onerror = function () { res(null); };
+    });
+  }).catch(function () { return null; });
+}
+function idbPut(k, v) {
+  return idb().then(function (db) {
+    return new Promise(function (res) {
+      var t = db.transaction("kv", "readwrite");
+      t.objectStore("kv").put(v, k);
+      t.oncomplete = function () { res(true); };
+      t.onerror = function () { res(false); };
+    });
+  }).catch(function () { return false; });
+}
+
+function itemKey(store, name) { return store + "|" + name; }
+
+function indexCatalog(rows) {
+  CAT.rows = rows;
+  CAT.byKey = new Map();
+  CAT.folded = new Array(rows.length);
+  for (var i = 0; i < rows.length; i++) {
+    CAT.byKey.set(itemKey(rows[i][0], rows[i][1]), i);
+    CAT.folded[i] = K.fold(rows[i][0] + " " + rows[i][1]);
+  }
+  CAT.ready = true;
+}
+
+function rowAt(i) {
+  var r = CAT.rows[i];
+  if (!r) return null;
+  return { key: itemKey(r[0], r[1]), store: r[0], name: r[1], price: r[2],
+           quantity: r[3], unit: r[4], regular: r[5] || r[2], since: r[6], high: r[7] };
+}
+function lookup(key) {
+  var i = CAT.byKey.get(key);
+  return i === undefined ? null : rowAt(i);
+}
+
+function storeLabel(s) {
+  var m = { jaya: "Jaya Grocer", aeon: "myAEON2go", mydin: "mydin" };
+  return m[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+}
+
+async function loadCatalog() {
+  var cached = await idbGet("catalog");
+  if (cached && cached.rows) { CAT.meta = cached.meta; indexCatalog(cached.rows); render(); }
+
+  var meta = null;
+  try {
+    var mr = await fetch("data/meta.json", { cache: "no-store" });
+    if (mr.ok) meta = await mr.json();
+  } catch (e) { /* offline is fine, we may have a cache */ }
+
+  if (!meta) {
+    if (!cached) CAT.error = "No price list yet. You can still track stock and type prices by hand.";
+    render();
+    return;
+  }
+  if (cached && cached.built === meta.built) { CAT.meta = meta; render(); return; }
+
+  try {
+    var r = await fetch("data/catalog.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var data = await r.json();
+    CAT.meta = meta;
+    CAT.error = "";
+    indexCatalog(data.rows);
+    await idbPut("catalog", { built: meta.built, rows: data.rows, meta: meta });
+  } catch (e) {
+    if (!cached) CAT.error = "Could not download prices: " + e.message;
+  }
+  render();
+}
+
+/* ================================================================== search */
+
+function search(q, canon, limit) {
+  var groups = K.queryTerms(q);
+  if (!groups.length || !CAT.ready) return [];
+  var first = groups[0];
+  var hits = [];
+  var f, quick, j, s;
+  for (var i = 0; i < CAT.folded.length; i++) {
+    f = CAT.folded[i];
+    quick = false;
+    for (j = 0; j < first.length; j++) if (f.indexOf(first[j]) >= 0) { quick = true; break; }
+    if (!quick) continue;
+    s = K.scoreName(f, groups);
+    if (s < 0) continue;
+    hits.push([i, s]);
+    if (hits.length > 4000) break;
+  }
+  var out = hits.map(function (h) {
+    var row = rowAt(h[0]);
+    var pack = K.parsePack(row.name, row.quantity, row.unit, canon);
+    return {
+      row: row, pack: pack, score: h[1],
+      unitPrice: pack ? row.price / pack : null,
+      off: row.regular > row.price ? (row.regular - row.price) / row.regular : 0,
+    };
+  });
+  // A product whose size can actually be read in this item's unit is worth far
+  // more than a close name match that cannot be counted.
+  out.sort(function (a, b) {
+    if (!!a.pack !== !!b.pack) return a.pack ? -1 : 1;
+    var d = b.score - a.score;
+    if (Math.abs(d) > 12) return d;
+    if (a.pack && b.pack) return a.unitPrice - b.unitPrice;
+    return d;
+  });
+  return out.slice(0, limit || 25);
+}
+
+/* ================================================================ helpers */
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function num(v) {
+  var n = parseFloat(String(v == null ? "" : v).replace(",", "."));
+  return isFinite(n) ? n : NaN;
+}
+function toast(msg) {
+  var t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function () { t.classList.remove("on"); }, 2600);
+}
+function byId(id) { return S.items.filter(function (i) { return i.id === id; })[0]; }
+
+var STATE_ORDER = { out: 0, need: 1, deal: 2, ok: 3, off: 4 };
+
+/** Everything the UI needs about one item, computed once per render. */
+function viewOf(it) {
+  var t = K.today();
+  var offs = K.offers(it, lookup);
+  var d = K.decide(it, offs, t, S.settings);
+  var open = K.openLot(it, t);
+  return { it: it, offs: offs, d: d, open: open, today: t,
+    reorder: (isFinite(it.coverDays) && it.coverDays > 0) ? it.coverDays : S.settings.coverDays };
+}
+
+/* ================================================================== gauge */
+
+function gauge(v, ghostDays) {
+  var span = Math.max(v.reorder * 3, 30);
+  var cover = Math.min(v.d.cover, span);
+  var pct = Math.max(0, Math.min(100, (cover / span) * 100));
+  var notch = Math.min(100, (v.reorder / span) * 100);
+  var g = "";
+  if (ghostDays && ghostDays > v.d.cover) {
+    var gp = Math.max(0, Math.min(100, (Math.min(ghostDays, span) / span) * 100));
+    g = '<i class="ahead" style="left:' + pct.toFixed(1) + '%;width:' +
+        Math.max(0, gp - pct).toFixed(1) + '%"></i>';
+  }
+  return '<div class="track"><i class="fill" style="width:' + pct.toFixed(1) + '%"></i>' +
+    g + '<i class="notch" style="left:' + notch.toFixed(1) + '%"></i></div>';
+}
+
+/* ================================================================ the tag */
+
+function shelfTag(o, unit) {
+  if (!o) return "";
+  var deal = o.off >= 0.03;
+  return '<div class="tag">' +
+    '<div class="tag-store"><span>' + esc(storeLabel(o.store)) + "</span>" +
+      (deal ? "<span>−" + Math.round(o.off * 100) + "%</span>" : "") + "</div>" +
+    '<div class="tag-body">' +
+      '<div class="tag-top">' +
+        '<span class="tag-price num">' + K.kr(o.price) + "</span>" +
+        '<span class="tag-unit num">' + K.kr(o.unitPrice) + "/" + K.UNIT_PER[unit] + "</span>" +
+        (deal ? '<span class="tag-was num">' + K.kr(o.regular) + "</span>" : "") +
+      "</div>" +
+      '<div class="tag-name">' + esc(o.name) + " · " +
+        K.fmtQty(o.pack, unit) + " " + K.UNIT_LABEL[unit] + " a pack</div>" +
+    "</div></div>";
+}
+
+/* ================================================================== TODAY */
+
+var EXPANDED = {};
+
+function renderToday() {
+  var body = $("#todayBody");
+  if (!S.items.length) {
+    body.innerHTML = starterHTML();
+    return;
+  }
+  var views = S.items.map(viewOf);
+  views.sort(function (a, b) {
+    var s = STATE_ORDER[a.d.state] - STATE_ORDER[b.d.state];
+    if (s) return s;
+    return a.d.cover - b.d.cover;
+  });
+
+  var html = "";
+
+  if (S.month !== K.monthKeyOf()) {
+    html += '<div class="note"><span>A new month has started. Close ' +
+      esc(monthName(S.month)) + ' to file its receipts.</span>' +
+      '<button class="btn sm" data-act="openReset">Close</button></div>';
+  }
+  if (CAT.error) html += '<div class="note"><span>' + esc(CAT.error) + "</span></div>";
+
+  var act = views.filter(function (v) { return v.d.state !== "ok" && v.d.state !== "off"; });
+  var calm = views.filter(function (v) { return v.d.state === "ok" || v.d.state === "off"; });
+
+  if (act.length) {
+    html += "<h2>" + act.length + (act.length === 1 ? " thing to buy" : " things to buy") + "</h2>";
+    act.forEach(function (v) { html += cardHTML(v); });
+  } else {
+    html += '<h2>Nothing to buy</h2><div class="empty"><b>The cupboard is holding.</b>' +
+      "Every item is above its reorder point and no price has dropped far enough to be worth stocking up on.</div>";
+  }
+
+  if (calm.length) {
+    html += "<h2>Covered</h2>";
+    calm.forEach(function (v) { html += slimHTML(v); });
+  }
+  // A plan of two things is not a plan yet, so the shortcuts stay in reach.
+  if (S.items.length < 5 && remainingStarters().length) {
+    html += "<h2>Add more of your plan</h2>" + starterChips() +
+      '<div class="row"><button class="btn ghost" data-act="newItem" style="flex:1">' +
+      "Add something else</button></div>";
+  }
+  body.innerHTML = html;
+}
+
+function cardHTML(v) {
+  var it = v.it, d = v.d;
+  var cls = "card act s-" + d.state;
+  var label = { out: "Out", need: "Buy one", deal: "Offer", ok: "", off: "No plan" }[d.state];
+  var bcls = { out: "b-out", need: "b-need", deal: "b-deal", off: "b-off" }[d.state] || "b-off";
+
+  var h = '<div class="' + cls + '" data-id="' + it.id + '">';
+  h += '<div class="chead"><div class="cname">' + esc(it.name) + "</div>" +
+       '<span class="badge ' + bcls + '">' + label + "</span></div>";
+
+  h += '<div class="gauge">' + gauge(v, d.coverAfter) +
+    '<div class="gsub"><span><b class="num">' + K.fmtQty(d.stock, it.unit) + "</b> " +
+    K.UNIT_LABEL[it.unit] + " left</span><span><b class=\"num\">" +
+    (d.cover <= 0 ? "gone" : K.fmtDays(d.cover)) + "</b>" +
+    (d.cover > 0 ? " left" : "") + "</span></div></div>";
+
+  if (d.best) h += shelfTag(d.best, it.unit);
+  if (d.reason) h += '<div class="why">' + esc(d.reason) + "</div>";
+
+  // Spoilage is the one thing the plan cannot see coming, so it is said plainly
+  // and in the amount you would actually bin, not as a date to interpret.
+  if (d.spoiling > 0.001) {
+    h += '<div class="warn"><span>About <b>' + K.fmtQty(d.spoiling, it.unit) + " " +
+      K.UNIT_LABEL[it.unit] + "</b> goes past its date in the next two weeks" +
+      (v.open && v.open.isOpen && v.open.daysLeft !== null && v.open.daysLeft >= 0
+        ? " — the open pack has " + K.fmtDays(v.open.daysLeft) + " left" : "") +
+      ".</span></div>";
+  } else if (v.open && v.open.isOpen && v.open.daysLeft !== null && v.open.daysLeft <= 2) {
+    h += '<div class="warn"><span>The open pack is good for ' +
+      (v.open.daysLeft <= 0 ? "no more days" : K.fmtDays(v.open.daysLeft)) + ".</span></div>";
+  }
+
+  if (d.packs > 0) {
+    h += '<div class="row"><button class="btn ' + (d.state === "deal" ? "deal" : "need") +
+      '" data-act="openBuy" data-id="' + it.id + '">Buy ' + d.packs +
+      (d.packs === 1 ? " pack" : " packs") + " · " + K.kr(d.spend) + "</button>" +
+      '<button class="btn ghost" data-act="toggle" data-id="' + it.id + '">' +
+      '<span class="chev">' + (EXPANDED[it.id] ? "⌃" : "⌄") + "</span></button></div>";
+  } else {
+    h += '<div class="row"><button class="btn ghost" data-act="toggle" data-id="' + it.id +
+      '" style="flex:1">Lookout list <span class="chev">' +
+      (EXPANDED[it.id] ? "⌃" : "⌄") + "</span></button></div>";
+  }
+
+  h += footHTML(v);
+  h += detailHTML(v);
+  return h + "</div>";
+}
+
+function slimHTML(v) {
+  var it = v.it, d = v.d;
+  var days = d.cover <= 0 ? "gone" : K.fmtDays(d.cover);
+  var right = K.fmtQty(d.stock, it.unit) + " · " + days;
+  var h = '<div class="card" data-id="' + it.id + '" style="padding:2px 14px">';
+  h += '<div class="slim" role="button" tabindex="0" data-act="toggle" data-id="' + it.id + '">' +
+    '<span class="cname">' + esc(it.name) + "</span>" +
+    gauge(v) +
+    '<span class="r num">' + esc(right) + "</span></div>";
+  h += '<div style="padding-bottom:10px">' + detailHTML(v) + "</div>";
+  return h + "</div>";
+}
+
+function footHTML(v) {
+  var it = v.it, d = v.d;
+  var bud = d.budget === null ? "—" : K.kr0(d.budget);
+  return '<div class="foot"><span><b class="num">' + K.kr0(it.spent) + "</b> of " +
+    '<b class="num">' + bud + "</b> this month</span>" +
+    (it.saved > 0 ? '<span class="save num">saved ' + K.kr0(it.saved) + "</span>" : "<span></span>") +
+    "</div>";
+}
+
+/* ------------------------------------------------- the lookout list, expanded */
+
+function detailHTML(v) {
+  var it = v.it;
+  var on = EXPANDED[it.id] ? " on" : "";
+  var h = '<div class="detail' + on + '" id="d-' + it.id + '">';
+
+  h += '<h2 style="margin-top:0">Lookout list</h2>';
+  h += '<div id="lo-' + it.id + '">' + lookoutHTML(v) + "</div>";
+
+  h += '<div class="f"><input type="search" placeholder="Add a product — ' +
+    esc(it.name.toLowerCase()) + '" data-act="search" data-id="' + it.id +
+    '" autocomplete="off" autocorrect="off" spellcheck="false"></div>';
+  h += '<div id="res-' + it.id + '"></div>';
+
+  h += '<div class="row"><button class="btn ghost" data-act="openStock" data-id="' + it.id +
+    '" style="flex:1">Add stock by hand</button>' +
+    '<button class="btn ghost" data-act="editItem" data-id="' + it.id +
+    '" style="flex:1">Edit plan</button></div>';
+  return h + "</div>";
+}
+
+function lookoutHTML(v) {
+  var it = v.it, offs = v.offs;
+  if (!offs.length) {
+    return '<div class="hint" style="margin:0 0 4px">Nothing here yet. Search below and ' +
+      "add the products you would actually buy — the cheapest one per unit always sorts first.</div>";
+  }
+  var h = "";
+  offs.forEach(function (o, i) {
+    h += '<div class="lo">' +
+      '<div class="lo-m"><div class="lo-n">' + (i === 0 ? '<b>' : "") + esc(o.name) +
+      (i === 0 ? "</b>" : "") + "</div>" +
+      '<div class="lo-s">' + esc(storeLabel(o.store)) + " · " + K.kr(o.price) +
+      " · " + K.fmtQty(o.pack, it.unit) + " " + K.UNIT_LABEL[it.unit] +
+      (o.live ? "" : " · offline") +
+      (o.off >= 0.03 ? ' · <span class="best">−' + Math.round(o.off * 100) + "%</span>" : "") +
+      "</div></div>" +
+      '<div class="lo-p"><div class="lo-u num' + (i === 0 ? " best" : "") + '">' +
+      K.kr(o.unitPrice) + '</div><div class="lo-w">/' + K.UNIT_PER[it.unit] + "</div></div>" +
+      '<button class="x" data-act="unwatch" data-id="' + it.id + '" data-key="' + esc(o.key) +
+      '" aria-label="Remove">×</button></div>';
+  });
+  return h;
+}
+
+function renderResults(id) {
+  var it = byId(id);
+  var box = $("#res-" + id);
+  if (!it || !box) return;
+  var input = $('input[data-act="search"][data-id="' + id + '"]');
+  var q = input ? input.value.trim() : "";
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  if (!CAT.ready) {
+    box.innerHTML = '<div class="hint">' + esc(CAT.error || "Prices are still loading…") + "</div>";
+    return;
+  }
+  var res = search(q, it.unit, 20);
+  if (!res.length) {
+    box.innerHTML = '<div class="hint">Nothing matched. Try the Bahasa Malaysia word — ' +
+      "listings mix English and Malay, though most English food words are translated for you.</div>";
+    return;
+  }
+  var watched = {};
+  it.watch.forEach(function (w) { watched[w.key] = true; });
+
+  var h = "";
+  res.forEach(function (r) {
+    var on = watched[r.row.key];
+    h += '<button class="res" data-act="watch" data-id="' + id + '" data-key="' +
+      esc(r.row.key) + '" data-pack="' + (r.pack || "") + '">' +
+      '<span class="res-m"><span class="lo-n">' + esc(r.row.name) + "</span>" +
+      '<span class="lo-s">' + esc(storeLabel(r.row.store)) + " · " +
+      K.kr(r.row.price) +
+      (r.pack ? " · " + K.fmtQty(r.pack, it.unit) + " " + K.UNIT_LABEL[it.unit] +
+                ' · ' + K.kr(r.unitPrice) + "/" + K.UNIT_PER[it.unit]
+              : ' · size unclear') +
+      (r.off >= 0.03 ? ' · −' + Math.round(r.off * 100) + "%" : "") +
+      "</span></span>" +
+      '<span class="plus' + (on ? " on" : "") + '">' + (on ? "✓" : "+") + "</span></button>";
+  });
+  box.innerHTML = h;
+}
+
+/* --------------------------------------------------------------- onboarding */
+
+var STARTERS = [
+  { name: "Eggs", unit: "pc", perMonth: 30, shelfLife: 28, openLife: 0 },
+  { name: "Milk", unit: "L", perMonth: 8, shelfLife: 10, openLife: 5 },
+  { name: "Rice", unit: "kg", perMonth: 10, shelfLife: 365, openLife: 0 },
+  { name: "Cooking Oil", unit: "L", perMonth: 2, shelfLife: 365, openLife: 90 },
+  { name: "Chicken", unit: "kg", perMonth: 2, shelfLife: 5, openLife: 2 },
+  { name: "Bread", unit: "pc", perMonth: 8, shelfLife: 6, openLife: 4 },
+  { name: "Instant Noodles", unit: "pc", perMonth: 10, shelfLife: 240, openLife: 0 },
+  { name: "Cheese", unit: "kg", perMonth: 1, shelfLife: 40, openLife: 14 },
+  { name: "Sugar", unit: "kg", perMonth: 1, shelfLife: 730, openLife: 0 },
+  { name: "Bananas", unit: "pc", perMonth: 30, shelfLife: 6, openLife: 0 },
+  { name: "Yoghurt", unit: "kg", perMonth: 4, shelfLife: 16, openLife: 5 },
+  { name: "Coffee", unit: "kg", perMonth: 0.5, shelfLife: 300, openLife: 60 },
+];
+
+function remainingStarters() {
+  var have = {};
+  S.items.forEach(function (i) { have[i.name.toLowerCase()] = true; });
+  return STARTERS.map(function (s, i) { return { s: s, i: i }; })
+    .filter(function (x) { return !have[x.s.name.toLowerCase()]; });
+}
+
+function starterChips() {
+  var left = remainingStarters();
+  if (!left.length) return "";
+  return '<div class="tags">' + left.map(function (x) {
+    return '<button class="tg" data-act="starter" data-i="' + x.i + '">' +
+      esc(x.s.name) + " +</button>";
+  }).join("") + "</div>";
+}
+
+function starterHTML() {
+  var h = '<div class="empty" style="text-align:left"><b>Start with what you eat.</b>' +
+    "Say how much of something you get through in a month — 3 kg of pasta, 36 eggs, " +
+    "5 litres of milk. Everything else in the app is worked out from that, so this is " +
+    "the only part you have to think about.</div>";
+  h += "<h2>Tap the ones you buy</h2>" + starterChips();
+  h += '<div class="row"><button class="btn" data-act="newItem" style="flex:1">' +
+    "Add something else</button></div>";
+  return h;
+}
+
+/* ================================================================== STOCK */
+
+function renderStock() {
+  var body = $("#stockBody");
+  if (!S.items.length) {
+    body.innerHTML = '<div class="empty"><b>No items yet.</b>Set up your monthly plan first.</div>';
+    return;
+  }
+  var t = K.today();
+  var views = S.items.map(viewOf);
+  views.sort(function (a, b) { return a.d.cover - b.d.cover; });
+
+  var h = '<div class="hint" style="margin:0 0 12px">Tap a pack to mark it open or sealed. ' +
+    "An open pack uses the shorter once-opened date; sealed packs keep their full date. " +
+    "Opened packs are finished first.</div>";
+
+  views.forEach(function (v) {
+    var it = v.it;
+    h += '<div class="card"><div class="chead"><div class="cname">' + esc(it.name) + "</div>" +
+      '<span class="num" style="font-size:13px;color:var(--mute)">' +
+      K.fmtQty(v.d.stock, it.unit) + " " + K.UNIT_LABEL[it.unit] +
+      " · " + (v.d.cover <= 0 ? "gone" : K.fmtDays(v.d.cover)) + "</span></div>";
+
+    var order = K.fefo(it.lots, it.openLife || 0).filter(function (l) { return l.qty > 1e-9; });
+    // Nine identical sealed packs of pasta are one fact, not nine rows.
+    // Open packs stay separate so you can toggle them one at a time.
+    var groups = [];
+    order.forEach(function (l, i) {
+      var e = K.effExp(l, it.openLife || 0);
+      var isOpen = l.open !== null && l.open !== undefined;
+      var g = groups[groups.length - 1];
+      var sameAsLast = g && i > 0 && !isOpen && !g.isOpen && g.exp === e &&
+        g.product === (l.product || "") && g.qtyEach === l.qty;
+      if (sameAsLast) { g.n++; g.ids.push(l.id); g.total += l.qty; }
+      else groups.push({ exp: e, product: l.product || "", qtyEach: l.qty, total: l.qty,
+        n: 1, ids: [l.id], isOpen: isOpen, lot: l });
+    });
+
+    if (!order.length) {
+      h += '<div class="hint" style="margin-top:8px">Empty.</div>';
+    } else {
+      groups.forEach(function (g) {
+        var left = g.exp === null ? null : g.exp - t;
+        var short = left !== null && left <= 3;
+        var cut = g.isOpen && it.openLife > 0 && g.lot.open !== null &&
+          g.lot.exp > g.lot.open + it.openLife;
+        h += '<div class="lot" data-act="toggleOpen" data-id="' + it.id +
+          '" data-lot="' + esc(g.ids[0]) + '" role="button" tabindex="0">' +
+          '<div class="lot-m">' +
+          '<div class="lot-q num">' + (g.isOpen ? '<i class="dot"></i>' : "") +
+          (g.n > 1 ? g.n + " × " : "") + K.fmtQty(g.qtyEach, it.unit) + " " +
+          K.UNIT_LABEL[it.unit] +
+          (g.n > 1 ? ' <span style="color:var(--faint);font-weight:400">= ' +
+            K.fmtQty(g.total, it.unit) + "</span>" : "") + "</div>" +
+          '<div class="lot-s' + (short ? " soon" : "") + '">' +
+          (g.isOpen ? "Open · " : "Sealed · ") +
+          (g.exp === null ? "no date" : "good to " + K.dayLabel(g.exp) +
+            (left !== null ? " · " + (left <= 0 ? "today" : K.fmtDays(left)) : "")) +
+          (cut ? " (cut short by opening)" : "") +
+          (g.product ? " · " + esc(g.product) : "") +
+          "</div></div>" +
+          '<button class="x" data-act="dropLot" data-id="' + it.id + '" data-lot="' +
+          esc(g.ids.join(",")) + '" aria-label="Remove">×</button></div>';
+      });
+    }
+    h += '<div class="row"><button class="btn ghost" data-act="openStock" data-id="' + it.id +
+      '" style="flex:1">Add stock</button></div>';
+    if (it.wasted > 0.001) {
+      h += '<div class="foot"><span>Thrown out this month</span><span class="num">' +
+        K.fmtQty(it.wasted, it.unit) + " " + K.UNIT_LABEL[it.unit] + "</span></div>";
+    }
+    h += "</div>";
+  });
+  body.innerHTML = h;
+}
+
+/* ================================================================== MONEY */
+
+function monthName(key) {
+  if (!key) return "";
+  var p = key.split("-");
+  var names = ["January","February","March","April","May","June","July","August",
+    "September","October","November","December"];
+  return (names[+p[1] - 1] || key) + " " + p[0];
+}
+function monthBounds() {
+  var now = new Date();
+  var first = new Date(now.getFullYear(), now.getMonth(), 1);
+  var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: K.dayOf(first), end: K.dayOf(last), days: last.getDate(),
+           dayIn: now.getDate() };
+}
+
+function monthTotals() {
+  var budget = 0, spent = 0, saved = 0, left = 0;
+  S.items.forEach(function (it) {
+    var offs = K.offers(it, lookup);
+    var b = K.budgetOf(it, offs);
+    if (b !== null) budget += b;
+    spent += it.spent || 0;
+    saved += it.saved || 0;
+    // Remaining plan qty at the highest regular unit price (honest worst case).
+    var hi = K.budgetUnit(offs);
+    if (hi !== null) left += Math.max(0, (it.perMonth || 0) - (it.boughtQty || 0)) * hi;
+  });
+  return { budget: budget, spent: spent, saved: saved, left: left, projected: spent + left };
+}
+
+function renderMoney() {
+  var body = $("#moneyBody");
+  var m = monthTotals();
+  var b = monthBounds();
+
+  var h = "";
+  if (S.month !== K.monthKeyOf()) {
+    h += '<div class="note"><span>' + esc(monthName(S.month)) +
+      ' is over.</span><button class="btn sm" data-act="openReset">Close it</button></div>';
+  }
+
+  h += '<div class="card"><div class="hsub" style="margin:0 0 6px">Saved so far in ' +
+    esc(monthName(S.month)) + "</div>" +
+    '<div class="big" style="color:var(--deal)">' + K.kr0(m.saved) + "</div>" +
+    '<div class="hint" style="margin-top:8px">Each purchase: usual pack price minus what you ' +
+    "paid. A pack usually RM40 bought for RM20 saves RM20. Summed over the month.</div></div>";
+
+  var pct = m.budget > 0 ? Math.min(100, (m.spent / m.budget) * 100) : 0;
+  h += '<div class="card"><div class="kv"><span>Spent</span><b class="num">' +
+    K.kr0(m.spent) + "</b></div>" +
+    '<div class="bar"><i class="' + (m.spent > m.budget ? "over" : "") +
+    '" style="width:' + pct.toFixed(1) + '%"></i></div>' +
+    '<div class="kv"><span>The plan at normal prices</span><b class="num">' +
+    K.kr0(m.budget) + "</b></div>" +
+    '<div class="kv"><span>Still to buy this month</span><b class="num">' +
+    K.kr0(m.left) + "</b></div>" +
+    '<div class="kv"><span>Month should land near</span><b class="num">' +
+    K.kr0(m.projected) + "</b></div>" +
+    '<div class="hint" style="margin-top:8px">Budget = monthly plan qty × highest regular ' +
+    "unit price on each lookout list. Projection assumes the rest is bought at that rate; " +
+    "every discount you take pulls the solid line down.</div></div>";
+
+  h += "<h2>Through the month</h2>";
+  h += '<div class="card">' + chartSVG(m, b) +
+    '<div class="hint" style="margin-top:6px">' +
+    '<span style="color:var(--mute)">Dashed</span> is the plan at normal prices. ' +
+    '<span style="color:var(--ink)">Solid</span> is what you actually spent. ' +
+    "The gap between them is the saving.</div></div>";
+
+  var rs = S.receipts.slice().sort(function (a, b2) { return b2.ts - a.ts; });
+  h += "<h2>" + (rs.length ? "Receipts" : "No purchases yet") + "</h2>";
+  if (rs.length) {
+    h += '<div class="card">';
+    rs.slice(0, 60).forEach(function (r) {
+      h += '<div class="rc"><div class="rc-m"><div>' + esc(r.item) +
+        " · " + r.packs + (r.packs === 1 ? " pack" : " packs") + "</div>" +
+        '<div class="rc-s">' + K.dayLabel(r.day) + " · " + esc(storeLabel(r.store)) +
+        " · " + esc(r.product) + "</div></div>" +
+        '<div class="rc-p"><div class="num">' + K.kr(r.total) + "</div>" +
+        (r.saved > 0.5 ? '<div class="save num">−' + K.kr0(r.saved) + "</div>" : "") +
+        "</div></div>";
+    });
+    h += "</div>";
+  } else {
+    h += '<div class="empty">Purchases you log will show up here, and stay in the ' +
+      "archive after you close the month.</div>";
+  }
+
+  h += '<div class="row"><button class="btn ghost" data-act="openReset" style="flex:1">' +
+    "Close " + esc(monthName(S.month)) + "</button></div>";
+
+  if (S.archive.length) {
+    h += "<h2>Earlier months</h2><div class=\"card\">";
+    S.archive.slice().reverse().forEach(function (a) {
+      h += '<div class="rc"><div class="rc-m"><div>' + esc(monthName(a.month)) + "</div>" +
+        '<div class="rc-s">' + a.receipts.length +
+        (a.receipts.length === 1 ? " purchase" : " purchases") + "</div></div>" +
+        '<div class="rc-p"><div class="num">' + K.kr0(a.spent) + "</div>" +
+        (a.saved > 0.5 ? '<div class="save num">−' + K.kr0(a.saved) + "</div>" : "") +
+        "</div></div>";
+    });
+    h += "</div>";
+  }
+  body.innerHTML = h;
+}
+
+function chartSVG(m, b) {
+  var W = 320, H = 150, PL = 40, PR = 8, PT = 10, PB = 20;
+  var iw = W - PL - PR, ih = H - PT - PB;
+  var top = Math.max(m.budget, m.projected, m.spent, 1) * 1.12;
+  var x = function (d) { return PL + (iw * (d - 1)) / Math.max(1, b.days - 1); };
+  var y = function (v) { return PT + ih - (ih * v) / top; };
+
+  // cumulative actual spend by day of month
+  var byDay = new Array(b.days + 1).fill(0);
+  S.receipts.forEach(function (r) {
+    var dd = new Date(r.ts).getDate();
+    if (dd >= 1 && dd <= b.days) byDay[dd] += r.total;
+  });
+  var cum = [], run = 0;
+  for (var i = 1; i <= b.dayIn; i++) { run += byDay[i]; cum.push([i, run]); }
+
+  var g = "";
+  // horizontal guides
+  [0, 0.5, 1].forEach(function (f) {
+    var v = top * f;
+    g += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(v).toFixed(1) +
+      '" y2="' + y(v).toFixed(1) + '" stroke="#e6e1d5" stroke-width="1"/>' +
+      '<text x="' + (PL - 5) + '" y="' + (y(v) + 3.5).toFixed(1) +
+      '" text-anchor="end" font-size="8.5" fill="#9c9689" font-family="ui-monospace,monospace">' +
+      Math.round(v) + "</text>";
+  });
+
+  // the plan at normal prices, spread evenly — the line you are trying to beat
+  g += '<line x1="' + x(1) + '" y1="' + y(0).toFixed(1) + '" x2="' + x(b.days) +
+    '" y2="' + y(m.budget).toFixed(1) +
+    '" stroke="#6f6a5e" stroke-width="1.4" stroke-dasharray="4 3"/>';
+
+  // shade the gap between plan-pace and actual, which is the saving so far
+  if (cum.length > 1) {
+    var area = "M" + x(1) + "," + y(0).toFixed(1);
+    cum.forEach(function (p) { area += " L" + x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1); });
+    for (var j = cum.length - 1; j >= 0; j--) {
+      var d0 = cum[j][0];
+      area += " L" + x(d0).toFixed(1) + "," + y((m.budget * (d0 - 1)) / (b.days - 1)).toFixed(1);
+    }
+    g += '<path d="' + area + ' Z" fill="#1a6b46" opacity="0.10"/>';
+  }
+
+  // actual spend
+  if (cum.length) {
+    var line = "M" + x(cum[0][0]).toFixed(1) + "," + y(cum[0][1]).toFixed(1);
+    cum.forEach(function (p) { line += " L" + x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1); });
+    g += '<path d="' + line + '" fill="none" stroke="#14120e" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round"/>';
+    var last = cum[cum.length - 1];
+    // where it lands if nothing else goes on offer
+    g += '<path d="M' + x(last[0]).toFixed(1) + "," + y(last[1]).toFixed(1) +
+      " L" + x(b.days).toFixed(1) + "," + y(m.projected).toFixed(1) +
+      '" fill="none" stroke="#14120e" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.5"/>';
+    g += '<circle cx="' + x(last[0]).toFixed(1) + '" cy="' + y(last[1]).toFixed(1) +
+      '" r="3" fill="#14120e"/>';
+  }
+
+  g += '<text x="' + PL + '" y="' + (H - 6) + '" font-size="8.5" fill="#9c9689">1</text>' +
+    '<text x="' + (W - PR) + '" y="' + (H - 6) +
+    '" font-size="8.5" fill="#9c9689" text-anchor="end">' + b.days + "</text>";
+
+  return '<svg class="chart" viewBox="0 0 ' + W + " " + H +
+    '" preserveAspectRatio="none" role="img" aria-label="Spending against the plan">' +
+    g + "</svg>";
+}
+
+/* =================================================================== PLAN */
+
+function renderPlan() {
+  var body = $("#planBody");
+  var h = '<div class="hint" style="margin:0 0 12px">This is the part you set once. ' +
+    "Everything the app decides — when to buy, how many, what it should cost — comes " +
+    "out of these numbers.</div>";
+
+  h += "<h2>Monthly plan</h2>";
+  if (!S.items.length) {
+    h += starterHTML();
+  } else {
+    h += '<div class="card">';
+    S.items.forEach(function (it) {
+      var r = K.rateOf(it);
+      h += '<div class="lot"><div class="lot-m">' +
+        '<div class="lot-q">' + esc(it.name) + "</div>" +
+        '<div class="lot-s"><span class="num">' + K.fmtQty(it.perMonth, it.unit) + "</span> " +
+        K.UNIT_LABEL[it.unit] + " a month · <span class=\"num\">" +
+        (r > 0 ? K.fmtQty(r, it.unit) : "0") + "</span> a day · keeps " +
+        it.shelfLife + " d" + (it.openLife > 0 ? ", " + it.openLife + " d once open" : "") +
+        "</div></div>" +
+        '<button class="btn ghost sm" data-act="editItem" data-id="' + it.id + '">Edit</button>' +
+        "</div>";
+    });
+    h += "</div>";
+    h += '<div class="row"><button class="btn" data-act="newItem" style="flex:1">Add an item</button></div>';
+    if (remainingStarters().length) h += "<h2>Quick add</h2>" + starterChips();
+  }
+
+  h += "<h2>Rules</h2><div class=\"card\">";
+  h += '<div class="f"><label>Buy again when supply drops to</label>' +
+    '<input type="number" min="1" step="1" inputmode="numeric" value="' + S.settings.coverDays +
+    '" data-act="set" data-k="coverDays"><div class="hint">Days. An item goes on the ' +
+    "buy list below this, even with no offer.</div></div>";
+  h += '<div class="f"><label>An offer counts from</label>' +
+    '<input type="number" min="1" step="1" inputmode="numeric" value="' + S.settings.dealPct +
+    '" data-act="set" data-k="dealPct"><div class="hint">Percent under what you normally ' +
+    "pay per unit. Below this, the app stays quiet.</div></div>";
+  h += '<div class="f"><label>Never stock more than</label>' +
+    '<input type="number" min="7" step="1" inputmode="numeric" value="' + S.settings.maxCover +
+    '" data-act="set" data-k="maxCover"><div class="hint">Days of supply, however good ' +
+    "the offer is.</div></div></div>";
+
+  h += "<h2>Prices</h2><div class=\"card\">";
+  if (CAT.ready) {
+    h += '<div class="kv"><span>Products</span><b class="num">' +
+      CAT.rows.length.toLocaleString("en-MY") + "</b></div>" +
+      '<div class="kv"><span>Built</span><b class="num">' +
+      esc(CAT.meta && CAT.meta.built ? String(CAT.meta.built).slice(0, 16).replace("T", " ") : "—") +
+      "</b></div>";
+  } else {
+    h += '<div class="hint">' + esc(CAT.error || "Loading…") + "</div>";
+  }
+  h += '<div class="row"><button class="btn ghost" data-act="refresh" style="flex:1">' +
+    "Check for new prices</button></div></div>";
+
+  h += "<h2>Your data</h2><div class=\"card\">" +
+    '<div class="hint" style="margin:0 0 10px">Everything lives on this device only. ' +
+    "Nothing is uploaded. Keep a copy somewhere if you care about it.</div>" +
+    '<div class="row"><button class="btn ghost" data-act="export" style="flex:1">Save a backup</button>' +
+    '<button class="btn ghost" data-act="import" style="flex:1">Restore</button></div></div>';
+
+  body.innerHTML = h;
+}
+
+/* ================================================================== sheets */
+
+var SHEET = {};
+
+/* iOS lets the page behind a fixed-position sheet keep scrolling on its own
+ * during an elastic bounce. The sheet and the nav stay pinned to the
+ * viewport while the content underneath slides — that mismatch is what
+ * shows up as tearing and stray floating elements. Locking the body to the
+ * exact scroll position while a sheet is open, and restoring it on close,
+ * is the standard fix. */
+var SCROLL_LOCK = null;
+function lockScroll() {
+  if (SCROLL_LOCK !== null) return;
+  SCROLL_LOCK = window.scrollY || window.pageYOffset || 0;
+  document.body.style.position = "fixed";
+  document.body.style.top = "-" + SCROLL_LOCK + "px";
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+}
+function unlockScroll() {
+  if (SCROLL_LOCK === null) return;
+  var y = SCROLL_LOCK;
+  SCROLL_LOCK = null;
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  window.scrollTo(0, y);
+}
+
+function openSheet(id) { lockScroll(); $(id).classList.add("on"); }
+function closeSheets() {
+  $$(".modal").forEach(function (m) { m.classList.remove("on"); });
+  unlockScroll();
+}
+
+var EXP_TAGS = [
+  ["4 days", 4], ["1 week", 7], ["2 weeks", 14], ["1 month", 30],
+  ["3 months", 90], ["6 months", 182], ["1 year", 365],
+];
+
+function tagsHTML(sel) {
+  return EXP_TAGS.map(function (t) {
+    return '<button class="tg' + (sel === t[1] ? " on" : "") + '" data-days="' + t[1] +
+      '">' + t[0] + "</button>";
+  }).join("");
+}
+
+/* ---------------------------------------------------------------- buy sheet */
+
+function openBuy(id) {
+  var it = byId(id);
+  if (!it) return;
+  var v = viewOf(it);
+  if (!v.offs.length) { toast("Add a product to the lookout list first."); return; }
+
+  SHEET = { kind: "buy", id: id, exp: it.shelfLife || 30 };
+  $("#buyTitle").textContent = it.name;
+  $("#buySub").textContent = K.fmtQty(v.d.stock, it.unit) + " " + K.UNIT_LABEL[it.unit] +
+    " on hand · " + (v.d.cover <= 0 ? "none left" : "lasts " + K.fmtDays(v.d.cover));
+
+  $("#buyProduct").innerHTML = v.offs.map(function (o, i) {
+    return '<option value="' + esc(o.key) + '"' + (i === 0 ? " selected" : "") + ">" +
+      esc(storeLabel(o.store)) + " · " + esc(o.name) + " · " + K.kr(o.price) + "</option>";
+  }).join("");
+
+  $("#buyPacks").value = Math.max(1, v.d.packs || 1);
+  $("#buyPrice").value = v.offs[0].price.toFixed(2);
+  $("#buyTags").innerHTML = tagsHTML(SHEET.exp);
+  $("#buyExp").value = K.isoFromDay(K.today() + SHEET.exp);
+  buyPreview();
+  openSheet("#mBuy");
+}
+
+function currentOffer() {
+  var it = byId(SHEET.id);
+  var v = viewOf(it);
+  var key = $("#buyProduct").value;
+  var o = v.offs.filter(function (x) { return x.key === key; })[0] || v.offs[0];
+  return { it: it, v: v, o: o };
+}
+
+function buyPreview() {
+  var c = currentOffer();
+  if (!c.o) return;
+  var it = c.it;
+  var packs = Math.max(1, Math.round(num($("#buyPacks").value)) || 1);
+  var price = num($("#buyPrice").value);
+  if (!isFinite(price) || price < 0) price = c.o.price;
+  var expDay = K.dayFromISO($("#buyExp").value) || K.today() + (it.shelfLife || 30);
+
+  var qty = packs * c.o.pack;
+  var total = packs * price;
+  // Savings = (usual pack price − what you pay) × packs. Prefer the product's
+  // own regular; fall back to typical unit × pack size.
+  var usualPack = (c.o.regular > 0 && c.o.regular > price)
+    ? c.o.regular
+    : (c.o.regularUnit > 0 ? c.o.regularUnit * c.o.pack
+      : (c.v.d.typical > 0 ? c.v.d.typical * c.o.pack : 0));
+  var saved = usualPack > 0 ? Math.max(0, (usualPack - price) * packs) : 0;
+
+  // Simulate exactly what this purchase does, including whether any of it spoils.
+  var lots = K.cloneLots(it.lots);
+  for (var i = 0; i < packs; i++)
+    lots.push({ qty: c.o.pack, exp: expDay, open: null, bought: K.today(), product: c.o.name });
+  var t = K.today();
+  var sim = K.run(K.cloneLots(lots), K.rateOf(it), it.openLife || 0, t, t + 400,
+    { stopWhenEmpty: true });
+  var cover = (sim.runOut === null ? t + 400 : sim.runOut) - t;
+
+  SHEET.preview = { packs: packs, price: price, qty: qty, total: total, saved: saved,
+    expDay: expDay, offer: c.o, cover: cover, wasted: sim.wasted };
+
+  var budgetLeft = c.v.d.remaining;
+  var h = '<div class="kv"><span>Adds</span><b class="num">' + K.fmtQty(qty, it.unit) + " " +
+    K.UNIT_LABEL[it.unit] + "</b></div>" +
+    '<div class="kv"><span>Lasts until</span><b class="num">' +
+    K.dayLabel(t + Math.round(cover)) + " · " + K.fmtDays(cover) + "</b></div>" +
+    '<div class="kv"><span>Costs</span><b class="num">' + K.kr(total) + "</b></div>";
+  if (saved > 0.5) {
+    h += '<div class="kv"><span>Cheaper than usual by</span><b class="num save">' +
+      K.kr(saved) + "</b></div>";
+  }
+  if (budgetLeft !== null) {
+    var over = total > budgetLeft + 1e-6;
+    h += '<div class="kv"><span>' + (over ? "Over this month's " + esc(it.name.toLowerCase()) +
+      " budget by" : "Left in the budget after") + "</span><b class=\"num\"" +
+      (over ? ' style="color:var(--gone)"' : "") + ">" +
+      K.kr(Math.abs(budgetLeft - total)) + "</b></div>";
+  }
+  if (sim.wasted > 0.001) {
+    h += '<div class="warn" style="margin-top:9px">About ' + K.fmtQty(sim.wasted, it.unit) +
+      " " + K.UNIT_LABEL[it.unit] + " would pass its date before you get to it.</div>";
+  }
+  $("#buyPrev").innerHTML = h;
+}
+
+function confirmBuy() {
+  var p = SHEET.preview;
+  var it = byId(SHEET.id);
+  if (!p || !it) return;
+  var t = K.today();
+
+  for (var i = 0; i < p.packs; i++) {
+    it.lots.push({ id: uid(), qty: p.offer.pack, exp: p.expDay, open: null,
+      bought: t, product: p.offer.name, paid: p.price });
+  }
+  it.spent = (it.spent || 0) + p.total;
+  it.saved = (it.saved || 0) + p.saved;
+  it.boughtQty = (it.boughtQty || 0) + p.qty;
+  it.asOf = t;
+
+  S.receipts.push({
+    ts: Date.now(), day: t, itemId: it.id, item: it.name,
+    store: p.offer.store, product: p.offer.name, packs: p.packs,
+    packQty: p.offer.pack, unit: it.unit, qty: p.qty,
+    price: p.price, total: p.total, saved: p.saved,
+  });
+  if (S.receipts.length > 400) S.receipts = S.receipts.slice(-400);
+
+  save();
+  closeSheets();
+  toast("Logged " + p.packs + (p.packs === 1 ? " pack" : " packs") + " of " + it.name + ".");
+  render();
+}
+
+/* -------------------------------------------------------------- stock sheet */
+
+/** Stock sheet accepts grams for kg items and ml for litres, so 100 g is easy. */
+function stockInputScale(unit) {
+  if (unit === "kg") return { factor: 0.001, noun: "grams", step: "1" };
+  if (unit === "L") return { factor: 0.001, noun: "ml", step: "1" };
+  return { factor: 1, noun: K.UNIT_NOUN[unit] || unit, step: "1" };
+}
+
+function openStock(id) {
+  var it = byId(id);
+  if (!it) return;
+  var sc = stockInputScale(it.unit);
+  SHEET = { kind: "stock", id: id, exp: it.shelfLife || 30, scale: sc.factor };
+  $("#stkTitle").textContent = "Add " + it.name.toLowerCase();
+  $("#stkSub").textContent = "Whatever is already in the cupboard. No price needed — " +
+    "this does not count against the month's budget.";
+  $("#stkQtyLabel").textContent = "How much (" + sc.noun + ")";
+  $("#stkQty").value = "";
+  $("#stkQty").setAttribute("step", sc.step);
+  $("#stkQty").setAttribute("min", "0");
+  $("#stkTags").innerHTML = tagsHTML(SHEET.exp);
+  $("#stkExp").value = K.isoFromDay(K.today() + SHEET.exp);
+  stockPreview();
+  openSheet("#mStock");
+  setTimeout(function () { $("#stkQty").focus(); }, 60);
+}
+
+function stockPreview() {
+  var it = byId(SHEET.id);
+  if (!it) return;
+  var raw = num($("#stkQty").value);
+  var q = isFinite(raw) ? raw * (SHEET.scale || 1) : NaN;
+  var expDay = K.dayFromISO($("#stkExp").value);
+  if (!isFinite(q) || q <= 0) {
+    $("#stkPrev").innerHTML = '<div class="hint" style="margin:0">Enter an amount to see ' +
+      "how long it covers you.</div>";
+    return;
+  }
+  var t = K.today();
+  var lots = K.cloneLots(it.lots);
+  lots.push({ qty: q, exp: expDay, open: null, bought: t, product: "" });
+  var sim = K.run(K.cloneLots(lots), K.rateOf(it), it.openLife || 0, t, t + 400,
+    { stopWhenEmpty: true });
+  var cover = (sim.runOut === null ? t + 400 : sim.runOut) - t;
+  var h = '<div class="kv"><span>Stock becomes</span><b class="num">' +
+    K.fmtQty(K.stockOf(it) + q, it.unit) + " " + K.UNIT_LABEL[it.unit] + "</b></div>" +
+    '<div class="kv"><span>Covers you</span><b class="num">' + K.fmtDays(cover) + "</b></div>";
+  if (sim.wasted > 0.001) {
+    h += '<div class="warn" style="margin-top:9px">About ' + K.fmtQty(sim.wasted, it.unit) +
+      " " + K.UNIT_LABEL[it.unit] + " would go off before you eat it.</div>";
+  }
+  $("#stkPrev").innerHTML = h;
+  SHEET.preview = { qty: q, expDay: expDay };
+}
+
+function confirmStock() {
+  var it = byId(SHEET.id);
+  var p = SHEET.preview;
+  if (!it || !p || !(p.qty > 0)) { toast("Enter an amount first."); return; }
+  it.lots.push({ id: uid(), qty: p.qty, exp: p.expDay, open: null,
+    bought: K.today(), product: "" });
+  it.asOf = K.today();
+  save();
+  closeSheets();
+  toast("Added to " + it.name.toLowerCase() + ".");
+  render();
+}
+
+/* --------------------------------------------------------------- item sheet */
+
+function openItem(id) {
+  var it = id ? byId(id) : null;
+  SHEET = { kind: "item", id: id || null, unit: it ? it.unit : "pc" };
+  $("#itemTitle").textContent = it ? it.name : "New item";
+  $("#itName").value = it ? it.name : "";
+  $("#itMonth").value = it ? it.perMonth : "";
+  $("#itDay").value = it && it.perMonth ? round3(K.rateOf(it)) : "";
+  $("#itShelf").value = it ? it.shelfLife : 30;
+  $("#itOpen").value = it ? it.openLife : 0;
+  $("#itCover").value = it && it.coverDays ? it.coverDays : "";
+  $("#itUnit").innerHTML = K.CANON.map(function (u) {
+    return '<button class="tg' + (SHEET.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
+      K.UNIT_NOUN[u] + "</button>";
+  }).join("");
+  $("#itDeleteRow").hidden = !it;
+  itemHint();
+  openSheet("#mItem");
+  if (!it) setTimeout(function () { $("#itName").focus(); }, 60);
+}
+function round3(v) { return Math.round(v * 1000) / 1000; }
+
+function itemHint() {
+  var m = num($("#itMonth").value);
+  var u = K.UNIT_LABEL[SHEET.unit];
+  $("#itRateHint").textContent = isFinite(m) && m > 0
+    ? "That is " + K.fmtQty(m / K.MONTH, SHEET.unit) + " " + u + " a day, " +
+      K.fmtQty(m * 12, SHEET.unit) + " " + u + " a year."
+    : "Type whichever number you know — the other one follows.";
+}
+
+function confirmItem() {
+  var name = $("#itName").value.trim();
+  var per = num($("#itMonth").value);
+  if (!name) { toast("Give it a name."); return; }
+  if (!isFinite(per) || per < 0) { toast("How much per month?"); return; }
+  var shelf = Math.max(1, Math.round(num($("#itShelf").value)) || 30);
+  var openL = Math.max(0, Math.round(num($("#itOpen").value)) || 0);
+  var cover = Math.round(num($("#itCover").value));
+  var it = SHEET.id ? byId(SHEET.id) : null;
+
+  if (!it) {
+    it = { id: uid(), name: name, unit: SHEET.unit, perMonth: per, shelfLife: shelf,
+      openLife: openL, coverDays: isFinite(cover) && cover > 0 ? cover : null,
+      watch: [], lots: [], asOf: K.today(), spent: 0, saved: 0, boughtQty: 0, wasted: 0 };
+    S.items.push(it);
+    EXPANDED[it.id] = true;
+  } else {
+    // Changing the unit would make existing pack sizes and stock meaningless.
+    if (it.unit !== SHEET.unit && (it.lots.length || it.watch.length)) {
+      toast("Clear the stock and lookout list before changing the unit.");
+      return;
+    }
+    it.name = name; it.unit = SHEET.unit; it.perMonth = per;
+    it.shelfLife = shelf; it.openLife = openL;
+    it.coverDays = isFinite(cover) && cover > 0 ? cover : null;
+  }
+  save();
+  closeSheets();
+  render();
+}
+
+function deleteItem() {
+  var it = byId(SHEET.id);
+  if (!it) return;
+  if (!confirm("Delete " + it.name + ", its stock and its lookout list?")) return;
+  S.items = S.items.filter(function (x) { return x.id !== it.id; });
+  save();
+  closeSheets();
+  toast(it.name + " removed.");
+  render();
+}
+
+/* -------------------------------------------------------------- month close */
+
+function openReset() {
+  var m = monthTotals();
+  $("#resetSub").textContent = "Filing " + monthName(S.month) + ".";
+  var lines = S.items.filter(function (it) { return it.spent > 0 || it.boughtQty > 0; });
+  var h = '<div class="kv"><span>Spent</span><b class="num">' + K.kr0(m.spent) + "</b></div>" +
+    '<div class="kv"><span>Saved</span><b class="num save">' + K.kr0(m.saved) + "</b></div>" +
+    '<div class="kv"><span>Purchases</span><b class="num">' + S.receipts.length + "</b></div>";
+  lines.forEach(function (it) {
+    h += '<div class="kv"><span>' + esc(it.name) + "</span><b class=\"num\">" +
+      K.fmtQty(it.boughtQty, it.unit) + " " + K.UNIT_LABEL[it.unit] + " · " +
+      K.kr0(it.spent) + "</b></div>";
+  });
+  $("#resetPrev").innerHTML = h;
+  openSheet("#mReset");
+}
+
+function confirmReset() {
+  var m = monthTotals();
+  S.archive.push({
+    month: S.month, spent: m.spent, saved: m.saved, budget: m.budget,
+    items: S.items.map(function (it) {
+      return { name: it.name, unit: it.unit, qty: it.boughtQty, spent: it.spent,
+        saved: it.saved, wasted: it.wasted };
+    }).filter(function (x) { return x.qty > 0 || x.spent > 0; }),
+    receipts: S.receipts.slice(),
+  });
+  if (S.archive.length > 24) S.archive = S.archive.slice(-24);
+
+  S.receipts = [];
+  S.items.forEach(function (it) {
+    it.spent = 0; it.saved = 0; it.boughtQty = 0; it.wasted = 0;
+  });
+  S.month = K.monthKeyOf();
+  save();
+  closeSheets();
+  toast("Filed. Stock and lists are untouched.");
+  render();
+}
+
+/* =================================================================== render */
+
+var TAB = "today";
+
+function render() {
+  reconcileAll();
+  $$("#p-today,#p-stock,#p-money,#p-plan").forEach(function (p) {
+    p.classList.toggle("on", p.id === "p-" + TAB);
+  });
+  $$("nav button").forEach(function (b) {
+    b.classList.toggle("on", b.dataset.tab === TAB);
+  });
+
+  if (TAB === "today") renderToday();
+  if (TAB === "stock") renderStock();
+  if (TAB === "money") renderMoney();
+  if (TAB === "plan") renderPlan();
+
+  var titles = { today: "Today", stock: "Stock", money: "Money", plan: "Plan" };
+  $("#hTitle").textContent = titles[TAB];
+
+  var m = monthTotals();
+  var todo = S.items.map(viewOf).filter(function (v) {
+    return v.d.state === "out" || v.d.state === "need" || v.d.state === "deal";
+  });
+  var pip = $("#pip");
+  pip.hidden = todo.length === 0;
+  pip.textContent = todo.length;
+
+  $("#hRight").textContent = m.saved > 0 ? "saved " + K.kr0(m.saved) : "";
+  var d = new Date();
+  $("#hSub").textContent = TAB === "today"
+    ? d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })
+    : monthName(S.month);
+}
+
+/* =================================================================== events */
+
+document.addEventListener("click", function (e) {
+  var nav = e.target.closest("nav button");
+  if (nav) { TAB = nav.dataset.tab; window.scrollTo(0, 0); render(); return; }
+
+  var modal = e.target.closest(".modal");
+  if (modal && e.target === modal) { closeSheets(); return; }
+
+  // expiry quick tags
+  var tg = e.target.closest("#buyTags .tg, #stkTags .tg");
+  if (tg) {
+    var days = +tg.dataset.days;
+    var wrap = tg.parentElement.id === "buyTags" ? "buy" : "stk";
+    $("#" + wrap + "Tags").innerHTML = tagsHTML(days);
+    $("#" + wrap + "Exp").value = K.isoFromDay(K.today() + days);
+    if (wrap === "buy") buyPreview(); else stockPreview();
+    return;
+  }
+  var ut = e.target.closest("#itUnit .tg");
+  if (ut) {
+    SHEET.unit = ut.dataset.unit;
+    $("#itUnit").innerHTML = K.CANON.map(function (u) {
+      return '<button class="tg' + (SHEET.unit === u ? " on" : "") + '" data-unit="' + u + '">' +
+        K.UNIT_NOUN[u] + "</button>";
+    }).join("");
+    itemHint();
+    return;
+  }
+
+  var b = e.target.closest("[data-act]");
+  if (!b) return;
+  var act = b.dataset.act, id = b.dataset.id;
+
+  if (act === "close") { closeSheets(); return; }
+
+  if (act === "toggle") {
+    EXPANDED[id] = !EXPANDED[id];
+    var d = $("#d-" + id);
+    if (d) {
+      d.classList.toggle("on", !!EXPANDED[id]);
+      var card = d.closest(".card");
+      if (card) {
+        card.classList.toggle("open", !!EXPANDED[id]);
+        var cv = card.querySelector(".chev");
+        if (cv) cv.textContent = EXPANDED[id] ? "⌃" : "⌄";
+      }
+      if (EXPANDED[id]) {
+        var inp = $('input[data-act="search"][data-id="' + id + '"]');
+        if (inp) setTimeout(function () { inp.focus(); }, 80);
+      }
+    }
+    return;
+  }
+
+  if (act === "watch") {
+    var it = byId(id), key = b.dataset.key;
+    var has = it.watch.some(function (w) { return w.key === key; });
+    if (has) {
+      it.watch = it.watch.filter(function (w) { return w.key !== key; });
+    } else {
+      var row = lookup(key);
+      var pack = num(b.dataset.pack);
+      it.watch.push({ key: key, pack: isFinite(pack) && pack > 0 ? pack : 1,
+        name: row ? row.name : key, store: row ? row.store : "",
+        lastPrice: row ? row.price : 0, lastRegular: row ? row.regular : 0 });
+      if (!(isFinite(pack) && pack > 0)) toast("Set the pack size — it could not be read.");
+    }
+    save();
+    // Update the tapped row in place. Rebuilding the results would pull the
+    // list out from under your finger halfway through adding three products.
+    var plus = b.querySelector(".plus");
+    if (plus) {
+      plus.classList.toggle("on", !has);
+      plus.textContent = has ? "+" : "✓";
+    }
+    var lo = $("#lo-" + id);
+    if (lo) lo.innerHTML = lookoutHTML(viewOf(it));
+    return;
+  }
+
+  if (act === "unwatch") {
+    var it2 = byId(id);
+    it2.watch = it2.watch.filter(function (w) { return w.key !== b.dataset.key; });
+    save();
+    var lo2 = $("#lo-" + id);
+    if (lo2) lo2.innerHTML = lookoutHTML(viewOf(it2));
+    renderResults(id);
+    return;
+  }
+
+  if (act === "dropLot") {
+    var it3 = byId(id);
+    var kill = {};
+    String(b.dataset.lot).split(",").forEach(function (x) { kill[x] = true; });
+    it3.lots = it3.lots.filter(function (l) { return !kill[l.id]; });
+    save(); render(); return;
+  }
+
+  if (act === "toggleOpen") {
+    var it4 = byId(id);
+    if (!it4) return;
+    var lotId = b.dataset.lot;
+    var target = it4.lots.filter(function (l) { return l.id === lotId; })[0];
+    if (!target) return;
+    var wasOpen = target.open !== null && target.open !== undefined;
+    if (wasOpen) {
+      target.open = null;
+      toast("Marked sealed.");
+    } else {
+      // Only one pack should be open at a time for this item.
+      it4.lots.forEach(function (l) { l.open = null; });
+      target.open = K.today();
+      toast("Marked open.");
+    }
+    save(); render(); return;
+  }
+
+  if (act === "openBuy") { openBuy(id); return; }
+  if (act === "openStock") { openStock(id); return; }
+  if (act === "confirmBuy") { confirmBuy(); return; }
+  if (act === "confirmStock") { confirmStock(); return; }
+  if (act === "newItem") { openItem(null); return; }
+  if (act === "editItem") { openItem(id); return; }
+  if (act === "confirmItem") { confirmItem(); return; }
+  if (act === "deleteItem") { deleteItem(); return; }
+  if (act === "openReset") { openReset(); return; }
+  if (act === "confirmReset") { confirmReset(); return; }
+  if (act === "refresh") { toast("Checking…"); loadCatalog(); return; }
+  if (act === "export") { doExport(); return; }
+  if (act === "import") { $("#importFile").click(); return; }
+
+  if (act === "starter") {
+    var s = STARTERS[+b.dataset.i];
+    if (S.items.some(function (x) { return x.name === s.name; })) { toast(s.name + " is already there."); return; }
+    S.items.push({ id: uid(), name: s.name, unit: s.unit, perMonth: s.perMonth,
+      shelfLife: s.shelfLife, openLife: s.openLife, coverDays: null,
+      watch: [], lots: [], asOf: K.today(), spent: 0, saved: 0, boughtQty: 0, wasted: 0 });
+    save(); render(); return;
+  }
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  var r = e.target.closest && e.target.closest('[role="button"]');
+  if (!r) return;
+  e.preventDefault();
+  r.click();
+});
+
+var searchTimer = null;
+document.addEventListener("input", function (e) {
+  var t = e.target;
+  if (t.dataset && t.dataset.act === "search") {
+    clearTimeout(searchTimer);
+    var id = t.dataset.id;
+    searchTimer = setTimeout(function () { renderResults(id); }, 180);
+    return;
+  }
+  if (t.id === "buyPacks" || t.id === "buyPrice") { buyPreview(); return; }
+  if (t.id === "stkQty") { stockPreview(); return; }
+  if (t.id === "itMonth") {
+    var m = num(t.value);
+    $("#itDay").value = isFinite(m) && m > 0 ? round3(m / K.MONTH) : "";
+    itemHint(); return;
+  }
+  if (t.id === "itDay") {
+    var dd = num(t.value);
+    $("#itMonth").value = isFinite(dd) && dd > 0 ? round3(dd * K.MONTH) : "";
+    itemHint(); return;
+  }
+});
+
+document.addEventListener("change", function (e) {
+  var t = e.target;
+  if (t.id === "buyProduct") {
+    var c = currentOffer();
+    if (c.o) $("#buyPrice").value = c.o.price.toFixed(2);
+    buyPreview(); return;
+  }
+  if (t.id === "buyExp") { buyPreview(); return; }
+  if (t.id === "stkExp") { stockPreview(); return; }
+
+  if (t.dataset && t.dataset.act === "pack") {
+    var it = byId(t.dataset.id);
+    var v = num(t.value);
+    if (!it) return;
+    if (!isFinite(v) || v <= 0) { toast("Pack size has to be a number above zero."); return; }
+    it.watch.forEach(function (w) { if (w.key === t.dataset.key) w.pack = v; });
+    save();
+    var lo = $("#lo-" + it.id);
+    if (lo) lo.innerHTML = lookoutHTML(viewOf(it));
+    return;
+  }
+  if (t.dataset && t.dataset.act === "set") {
+    var n = num(t.value);
+    if (isFinite(n) && n > 0) { S.settings[t.dataset.k] = n; save(); render(); }
+    return;
+  }
+});
+
+/* ------------------------------------------------------------ backup files */
+
+function doExport() {
+  var blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "kurv-" + K.isoFromDay(K.today()) + ".json";
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  toast("Backup saved.");
+}
+
+$("#importFile").addEventListener("change", function (e) {
+  var f = e.target.files[0];
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function () {
+    try {
+      var d = JSON.parse(fr.result);
+      if (!d || !Array.isArray(d.items)) throw new Error("not a Kurv backup");
+      if (!confirm("Replace everything on this device with the backup?")) return;
+      localStorage.setItem(LSKEY, JSON.stringify(d));
+      load(); render();
+      toast("Restored.");
+    } catch (err) { toast("That file is not a Kurv backup."); }
+  };
+  fr.readAsText(f);
+  e.target.value = "";
+});
+
+/* ====================================================================== go */
+
+load();
+render();
+loadCatalog();
+
+// Coming back after midnight, or after a week away, should not show stale cover.
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) render();
+});
+
+window.Kurv_app = { S: function () { return S; }, CAT: CAT, render: render,
+  search: search, viewOf: viewOf, load: load };
+})();
+</script>
+</body>
+</html>
