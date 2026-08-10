@@ -1,1 +1,60 @@
-333
+name: Build prices and deploy
+
+on:
+  schedule:
+    # 05:10 UTC — after the upstream scrape has settled overnight.
+    - cron: "10 5 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let a nightly build and a manual push fight over the same deployment.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Assemble the site
+        run: |
+          mkdir -p dist
+          cp -r site/. dist/
+          ls -la dist/
+
+      - name: Fetch and slim the price data
+        run: node tools/build-data.mjs
+        env:
+          OUT_DIR: dist/data
+          # Optional overrides -- defaults live in build-data.mjs itself.
+          # JAYA_HOSTS: jgsj          # comma-separated Jaya branch subdomains
+          # AEON_TERMS: milk,egg,ayam # comma-separated search terms
+          # MYDIN_STORE: default      # Magento "Store" header (code S1116)
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
