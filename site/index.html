@@ -96,12 +96,25 @@ h2:first-child{margin-top:2px}
    reused live inside the buy sheet, so the preview is literally the gauge
    you were just looking at. */
 .gauge{margin:10px 0 2px}
-.track{position:relative;height:9px;background:#ece7db;border-radius:5px;overflow:hidden}
-.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--ink)}
-.card.s-need .fill{background:var(--need)}
-.card.s-out .fill{background:var(--gone)}
-.ahead{position:absolute;top:0;bottom:0;border-radius:0 5px 5px 0;background:#9ecdb4}
-.notch{position:absolute;top:0;bottom:0;width:1px;background:#8e8878}
+
+/* The burn-down is a count of days, not a fraction of a thing, so it is drawn
+   as discrete pips rather than a smooth fill -- a smooth bar reads as "62% of
+   the rice", which is not what the number means. Each pip is a slice of the
+   window; the outlined one is the reorder point. */
+.pips{display:flex;gap:2px;align-items:stretch;height:11px}
+.pips i{flex:1;border-radius:2px;background:#ece7db;min-width:2px}
+.pips i.on{background:var(--ink)}
+.card.s-need .pips i.on{background:var(--need)}
+.card.s-out .pips i.on{background:var(--gone)}
+.pips i.ghost{background:#9ecdb4}
+.pips i.mark{box-shadow:inset 0 0 0 1px #8e8878}
+
+/* Hairline above the pips: how much of this item's own month budget is gone.
+   Amber means one more pack tips it over, red means it already has. */
+.fuse{height:2px;border-radius:2px;background:#ece7db;overflow:hidden;margin-bottom:5px}
+.fuse i{display:block;height:100%;border-radius:2px;background:var(--deal)}
+.fuse i.tip{background:var(--need)}
+.fuse i.over{background:var(--gone)}
 .gsub{display:flex;justify-content:space-between;gap:8px;margin-top:6px;
   font-size:12px;color:var(--mute)}
 .gsub .num{color:var(--ink)}
@@ -147,14 +160,18 @@ h2:first-child{margin-top:2px}
 .slim{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
   padding:11px 2px;min-height:var(--tap)}
 .slim .cname{flex:none;min-width:72px;max-width:38%}
-.slim .track{flex:1;height:7px;min-width:48px}
-.slim .r{font-size:12px;color:var(--mute);flex:none;text-align:right;min-width:88px;
+.slim .pips{flex:1;height:8px;min-width:48px}
+.slim .gauge{flex:1;margin:0;min-width:48px}
+.slim .r{font-size:12px;color:var(--mute);flex:none;text-align:right;min-width:112px;
   white-space:nowrap}
 
 /* ------------------------------------------------------------------ fields */
 .f{margin-top:11px}
 .f label{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;
   text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+textarea{-webkit-appearance:none;appearance:none;width:100%;background:#fff;
+  border:1px solid var(--rule);border-radius:8px;padding:10px 11px;font-size:14px;
+  font-family:var(--mono);line-height:1.5;resize:vertical;color:var(--ink)}
 input[type=text],input[type=number],input[type=date],input[type=search],select{
   -webkit-appearance:none;appearance:none;width:100%;background:#fff;border:1px solid var(--rule);border-radius:8px;
   padding:10px 11px;font-size:16px;min-height:var(--tap);
@@ -223,7 +240,8 @@ input::placeholder{color:#b8b2a4;font-family:var(--sans)}
   position:relative}
 .bar i{display:block;height:100%;background:var(--ink);border-radius:5px}
 .bar i.over{background:var(--gone)}
-svg.chart{width:100%;height:150px;display:block;margin-top:4px}
+svg.chart{width:100%;height:148px;display:block;margin-top:4px}
+.sfilt{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
 .rc{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule2);font-size:13px}
 .rc:last-child{border-bottom:0}
 .rc-m{flex:1;min-width:0}
@@ -244,7 +262,11 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;
 nav button{flex:1;padding:9px 2px 8px;font-size:10px;letter-spacing:.05em;
   color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:3px;
   min-height:56px;justify-content:center;position:relative}
-nav button .g{font-size:17px;line-height:1}
+nav button .g{width:22px;height:22px;display:block}
+nav button .g svg{width:22px;height:22px;display:block;
+  fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+nav button.on .g svg{stroke-width:1.9}
 nav button.on{color:var(--ink);font-weight:640}
 nav button.on::after{content:"";position:absolute;top:0;left:26%;right:26%;height:2px;
   background:var(--ink)}
@@ -295,10 +317,10 @@ nav .pip{position:absolute;top:7px;right:calc(50% - 19px);min-width:15px;height:
 </main>
 
 <nav>
-  <button data-tab="today" class="on"><span class="g">◎</span>Today<span class="pip" id="pip" hidden></span></button>
-  <button data-tab="stock"><span class="g">▤</span>Stock</button>
-  <button data-tab="money"><span class="g">◪</span>Money</button>
-  <button data-tab="plan"><span class="g">≡</span>Plan</button>
+  <button data-tab="today" class="on"><span class="g"><svg viewBox="0 0 22 22"><circle cx="11" cy="11" r="7.2"/><path d="M11 6.6V11l3 1.9"/></svg></span>Today<span class="pip" id="pip" hidden></span></button>
+  <button data-tab="stock"><span class="g"><svg viewBox="0 0 22 22"><rect x="3.6" y="4" width="14.8" height="14" rx="2"/><path d="M3.6 8.9h14.8M3.6 13.7h14.8M8.3 4v14"/></svg></span>Stock</button>
+  <button data-tab="money"><span class="g"><svg viewBox="0 0 22 22"><rect x="2.8" y="6" width="16.4" height="10.6" rx="2"/><circle cx="11" cy="11.3" r="2.5"/><path d="M5.6 11.3h.01M16.4 11.3h.01"/></svg></span>Money</button>
+  <button data-tab="plan"><span class="g"><svg viewBox="0 0 22 22"><path d="M4 6.2h9.5M4 11h11M4 15.8h7"/><path d="M17.2 5.2v4M15.2 7.2h4"/></svg></span>Plan</button>
 </nav>
 
 <!-- Log a purchase ------------------------------------------------------- -->
@@ -414,6 +436,31 @@ nav .pip{position:absolute;top:7px;right:calc(50% - 19px);min-width:15px;height:
     <div class="row">
       <button class="btn ghost" data-act="close">Not yet</button>
       <button class="btn" data-act="confirmReset">File it and start fresh</button>
+    </div>
+  </div>
+</div>
+
+<!-- Plan as CSV ----------------------------------------------------------- -->
+<div class="modal" id="mPlanCSV">
+  <div class="sheet">
+    <h3>Plan as CSV</h3>
+    <div class="sub">Copy it out, or paste one in and it fills the plan.</div>
+    <div class="f">
+      <textarea id="planCSVArea" rows="10" spellcheck="false" autocapitalize="off"
+        autocorrect="off" placeholder="name,unit,per_month,shelf_life_days,open_life_days,reorder_days"></textarea>
+      <div class="hint">
+        Columns are matched by header name, so order does not matter and extra
+        columns are ignored. <b>name</b> and <b>per_month</b> are required;
+        <b>unit</b> is <span class="num">pc</span>, <span class="num">kg</span> or
+        <span class="num">L</span>. Blank <b>reorder_days</b> uses the global rule.
+        Lines starting with <span class="num">#</span> are ignored.
+      </div>
+    </div>
+    <div class="prev" id="planCSVPrev"></div>
+    <div class="row">
+      <button class="btn ghost" data-act="close">Cancel</button>
+      <button class="btn ghost" data-act="planCSVCopy">Copy</button>
+      <button class="btn" data-act="applyPlanCSV">Read it in</button>
     </div>
   </div>
 </div>
@@ -1336,19 +1383,39 @@ function viewOf(it) {
 
 /* ================================================================== gauge */
 
+var PIPS = 20;
+
 function gauge(v, ghostDays) {
   var span = Math.max(v.reorder * 3, 30);
-  var cover = Math.min(v.d.cover, span);
-  var pct = Math.max(0, Math.min(100, (cover / span) * 100));
-  var notch = Math.min(100, (v.reorder / span) * 100);
-  var g = "";
+  var cover = Math.min(Math.max(0, v.d.cover), span);
+  // Round up, so any cover at all lights at least one pip -- "half a day left"
+  // showing an empty bar was the old smooth fill's worst lie.
+  var on = Math.max(v.d.cover > 0 ? 1 : 0, Math.min(PIPS, Math.ceil((cover / span) * PIPS)));
+  var gh = 0;
   if (ghostDays && ghostDays > v.d.cover) {
-    var gp = Math.max(0, Math.min(100, (Math.min(ghostDays, span) / span) * 100));
-    g = '<i class="ahead" style="left:' + pct.toFixed(1) + '%;width:' +
-        Math.max(0, gp - pct).toFixed(1) + '%"></i>';
+    gh = Math.max(0, Math.min(PIPS, Math.ceil((Math.min(ghostDays, span) / span) * PIPS)));
   }
-  return '<div class="track"><i class="fill" style="width:' + pct.toFixed(1) + '%"></i>' +
-    g + '<i class="notch" style="left:' + notch.toFixed(1) + '%"></i></div>';
+  var mark = Math.max(0, Math.min(PIPS - 1, Math.ceil((v.reorder / span) * PIPS) - 1));
+  var s = "";
+  for (var i = 0; i < PIPS; i++) {
+    var c = i < on ? "on" : (i < gh ? "ghost" : "");
+    if (i === mark) c += (c ? " " : "") + "mark";
+    s += c ? '<i class="' + c + '"></i>' : "<i></i>";
+  }
+  return '<div class="pips">' + s + "</div>";
+}
+
+/* The item's own month budget, as a hairline. Green while there is room, amber
+   when the next pack would break it, red once it is broken. Silent when the
+   item has no budget yet (nothing on the lookout list to price it from). */
+function budgetFuse(v) {
+  var d = v.d, spent = v.it.spent || 0;
+  if (d.budget === null || !(d.budget > 0)) return "";
+  var next = d.best ? d.best.price : 0;
+  var cls = spent > d.budget ? " class=\"over\""
+          : (next > 0 && spent + next > d.budget ? " class=\"tip\"" : "");
+  var pct = Math.max(0, Math.min(100, (spent / d.budget) * 100));
+  return '<div class="fuse"><i' + cls + ' style="width:' + pct.toFixed(1) + '%"></i></div>';
 }
 
 /* ================================================================ the tag */
@@ -1373,6 +1440,7 @@ function shelfTag(o, unit) {
 /* ================================================================== TODAY */
 
 var EXPANDED = {};
+var SFILT = {};   // item id -> store code the lookout search is narrowed to, "" = all
 
 function renderToday() {
   var body = $("#todayBody");
@@ -1430,7 +1498,7 @@ function cardHTML(v) {
   h += '<div class="chead"><div class="cname">' + esc(it.name) + "</div>" +
        '<span class="badge ' + bcls + '">' + label + "</span></div>";
 
-  h += '<div class="gauge">' + gauge(v, d.coverAfter) +
+  h += '<div class="gauge">' + budgetFuse(v) + gauge(v, d.coverAfter) +
     '<div class="gsub"><span><b class="num">' + K.fmtQty(d.stock, it.unit) + "</b> " +
     K.UNIT_LABEL[it.unit] + " left</span><span><b class=\"num\">" +
     (d.cover <= 0 ? "gone" : K.fmtDays(d.cover)) + "</b>" +
@@ -1472,11 +1540,12 @@ function cardHTML(v) {
 function slimHTML(v) {
   var it = v.it, d = v.d;
   var days = d.cover <= 0 ? "gone" : K.fmtDays(d.cover);
-  var right = K.fmtQty(d.stock, it.unit) + " · " + days;
+  // Never print a bare number: "0,5" on its own says nothing, "0,5 kg" does.
+  var right = K.fmtQty(d.stock, it.unit) + " " + K.UNIT_LABEL[it.unit] + " · " + days;
   var h = '<div class="card" data-id="' + it.id + '" style="padding:2px 14px">';
   h += '<div class="slim" role="button" tabindex="0" data-act="toggle" data-id="' + it.id + '">' +
     '<span class="cname">' + esc(it.name) + "</span>" +
-    gauge(v) +
+    '<span class="gauge">' + budgetFuse(v) + gauge(v) + "</span>" +
     '<span class="r num">' + esc(right) + "</span></div>";
   h += '<div style="padding-bottom:10px">' + detailHTML(v) + "</div>";
   return h + "</div>";
@@ -1548,16 +1617,40 @@ function renderResults(id) {
     box.innerHTML = '<div class="hint">' + esc(CAT.error || "Prices are still loading…") + "</div>";
     return;
   }
-  var res = search(q, it.unit, 20);
-  if (!res.length) {
+  // Pull a wider slice than is shown, because the store filter cuts into it
+  // and filtering a 20-row slice would leave two or three rows per chip.
+  var all = search(q, it.unit, 240);
+  if (!all.length) {
     box.innerHTML = '<div class="hint">Nothing matched. Try the Bahasa Malaysia word — ' +
       "listings mix English and Malay, though most English food words are translated for you.</div>";
     return;
   }
+
+  // Only offer chips for stores that actually have a hit for this query, in
+  // hit-count order, so the filter can never lead to an empty list.
+  var counts = {};
+  all.forEach(function (r) { counts[r.row.store] = (counts[r.row.store] || 0) + 1; });
+  var stores = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+  var pick = SFILT[id] && counts[SFILT[id]] ? SFILT[id] : "";
+
+  var res = (pick ? all.filter(function (r) { return r.row.store === pick; }) : all).slice(0, 20);
+
+  var chips = "";
+  if (stores.length > 1) {
+    chips = '<div class="sfilt">' +
+      '<button class="tg' + (pick ? "" : " on") + '" data-act="sfilt" data-id="' + id +
+      '" data-store="">All <span class="num">' + all.length + "</span></button>" +
+      stores.map(function (st) {
+        return '<button class="tg' + (pick === st ? " on" : "") + '" data-act="sfilt" data-id="' +
+          id + '" data-store="' + esc(st) + '">' + esc(storeLabel(st)) +
+          ' <span class="num">' + counts[st] + "</span></button>";
+      }).join("") + "</div>";
+  }
+
   var watched = {};
   it.watch.forEach(function (w) { watched[w.key] = true; });
 
-  var h = "";
+  var h = chips;
   res.forEach(function (r) {
     var on = watched[r.row.key];
     h += '<button class="res" data-act="watch" data-id="' + id + '" data-key="' +
@@ -1597,6 +1690,172 @@ function remainingStarters() {
   S.items.forEach(function (i) { have[i.name.toLowerCase()] = true; });
   return STARTERS.map(function (s, i) { return { s: s, i: i }; })
     .filter(function (x) { return !have[x.s.name.toLowerCase()]; });
+}
+
+/* -------------------------------------------------------- the plan as CSV
+ * Setting a plan up a sheet at a time is the slowest part of using this, so
+ * the whole plan is also a CSV you can paste in or copy out — same idea as
+ * the SunWatch exports. CSV rather than prose because every field is named
+ * in the header, so there is nothing to guess at and nothing to mis-read.
+ *
+ * Columns are matched by header name, not position, so column order does not
+ * matter and extra columns are ignored. Only `name` and `per_month` are
+ * required; the rest fall back to sane defaults.
+ */
+
+var CSV_COLS = ["name", "unit", "per_month", "shelf_life_days", "open_life_days", "reorder_days"];
+
+// Split one CSV line, honouring "quoted, fields" and "" escapes.
+function csvSplit(line) {
+  var out = [], cur = "", q = false, i, c;
+  for (i = 0; i < line.length; i++) {
+    c = line.charAt(i);
+    if (q) {
+      if (c === '"') {
+        if (line.charAt(i + 1) === '"') { cur += '"'; i++; } else q = false;
+      } else cur += c;
+    } else if (c === '"') q = true;
+    else if (c === "," || c === ";" || c === "\t") { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map(function (x) { return x.trim(); });
+}
+
+function csvCell(v) {
+  var t = String(v == null ? "" : v);
+  return /[",;\t\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+
+var CSV_UNITS = {
+  pc: "pc", pcs: "pc", piece: "pc", pieces: "pc", biji: "pc", unit: "pc",
+  units: "pc", ea: "pc", each: "pc", stk: "pc",
+  kg: "kg", kgs: "kg", kilo: "kg", kilos: "kg", kilogram: "kg", kilograms: "kg",
+  l: "L", litre: "L", litres: "L", liter: "L", liters: "L",
+};
+
+function parsePlanCSV(txt) {
+  var lines = String(txt || "").split(/\r?\n/).filter(function (l) {
+    return l.trim() && l.trim().charAt(0) !== "#";
+  });
+  if (!lines.length) return { items: [], bad: 0, cols: null };
+
+  // A header is only a header if it actually names columns we know — otherwise
+  // the first row is data and we fall back to canonical column order.
+  var first = csvSplit(lines[0]).map(function (h) {
+    return h.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  });
+  var idx = {}, seen = 0;
+  first.forEach(function (h, i) {
+    var k = { item: "name", product: "name", qty: "per_month", amount: "per_month",
+              per_month: "per_month", monthly: "per_month", month: "per_month",
+              shelf_life: "shelf_life_days", keeps: "shelf_life_days",
+              shelf_life_days: "shelf_life_days", open_life: "open_life_days",
+              open_life_days: "open_life_days", once_open: "open_life_days",
+              reorder: "reorder_days", reorder_days: "reorder_days",
+              name: "name", unit: "unit", units: "unit" }[h];
+    if (k && !(k in idx)) { idx[k] = i; seen++; }
+  });
+
+  var body;
+  if (seen >= 2 && "name" in idx) { body = lines.slice(1); }
+  else { idx = {}; CSV_COLS.forEach(function (c, i) { idx[c] = i; }); body = lines; }
+
+  var out = [], bad = 0;
+  body.forEach(function (line) {
+    var f = csvSplit(line);
+    var get = function (k) { return idx[k] === undefined ? "" : (f[idx[k]] || ""); };
+
+    var name = get("name").replace(/\s+/g, " ").slice(0, 40);
+    var per = parseFloat(get("per_month").replace(",", "."));
+    if (!name || !isFinite(per) || per <= 0) { bad++; return; }
+
+    var unit = CSV_UNITS[get("unit").toLowerCase()] || "pc";
+    var shelf = Math.round(parseFloat(get("shelf_life_days")));
+    var open = Math.round(parseFloat(get("open_life_days")));
+    var reo = Math.round(parseFloat(get("reorder_days")));
+
+    out.push({
+      name: name,
+      unit: unit,
+      perMonth: Math.round(per * 1000) / 1000,
+      shelfLife: isFinite(shelf) && shelf >= 1 ? Math.min(3650, shelf) : 30,
+      openLife: isFinite(open) && open >= 0 ? Math.min(3650, open) : 0,
+      coverDays: isFinite(reo) && reo >= 1 ? Math.min(365, reo) : null,
+    });
+  });
+  return { items: out, bad: bad, cols: idx };
+}
+
+function planToCSV() {
+  var h = CSV_COLS.join(",");
+  return h + "\n" + S.items.map(function (it) {
+    return [it.name, K.UNIT_PER[it.unit], it.perMonth, it.shelfLife, it.openLife,
+            it.coverDays == null ? "" : it.coverDays].map(csvCell).join(",");
+  }).join("\n");
+}
+
+function openPlanCSV() {
+  $("#planCSVArea").value = planToCSV();
+  openSheet("#mPlanCSV");
+  previewPlanCSV();
+}
+
+function previewPlanCSV() {
+  var box = $("#planCSVPrev");
+  if (!box) return;
+  var r = parsePlanCSV($("#planCSVArea").value);
+  if (!r.items.length) {
+    box.innerHTML = '<div class="hint">No rows read yet.' +
+      (r.bad ? " " + r.bad + (r.bad === 1 ? " row" : " rows") + " skipped." : "") + "</div>";
+    return;
+  }
+  // Show what was understood before committing: a header-matched parse can
+  // still land a value in the wrong field, and every number downstream
+  // depends on these six.
+  var h = '<div class="hint" style="margin-bottom:6px">' + r.items.length +
+    (r.items.length === 1 ? " row" : " rows") +
+    (r.bad ? ", " + r.bad + " skipped" : "") + ":</div>";
+  r.items.slice(0, 30).forEach(function (x) {
+    var dup = S.items.some(function (y) { return y.name.toLowerCase() === x.name.toLowerCase(); });
+    h += '<div class="kv"><span>' + esc(x.name) + (dup ? " · updates" : "") + "</span>" +
+      '<b class="num">' + K.fmtQty(x.perMonth, x.unit) + " " + K.UNIT_PER[x.unit] +
+      " · " + x.shelfLife + "d" + (x.openLife > 0 ? "/" + x.openLife + "d" : "") +
+      (x.coverDays ? " · re " + x.coverDays + "d" : "") + "</b></div>";
+  });
+  box.innerHTML = h;
+}
+
+function applyPlanCSV() {
+  var r = parsePlanCSV($("#planCSVArea").value);
+  if (!r.items.length) { toast("No usable rows."); return; }
+
+  var added = 0, updated = 0, wiped = 0;
+  r.items.forEach(function (x) {
+    var ex = null;
+    for (var i = 0; i < S.items.length; i++) {
+      if (S.items[i].name.toLowerCase() === x.name.toLowerCase()) { ex = S.items[i]; break; }
+    }
+    if (ex) {
+      // A unit change invalidates every quantity already recorded against the
+      // item, so stock and lookout go — the same rule the edit sheet has.
+      if (ex.unit !== x.unit) { ex.unit = x.unit; ex.lots = []; ex.watch = []; wiped++; }
+      ex.perMonth = x.perMonth;
+      ex.shelfLife = x.shelfLife;
+      ex.openLife = x.openLife;
+      ex.coverDays = x.coverDays;
+      updated++;
+    } else {
+      S.items.push({ id: uid(), name: x.name, unit: x.unit, perMonth: x.perMonth,
+        shelfLife: x.shelfLife, openLife: x.openLife, coverDays: x.coverDays,
+        watch: [], lots: [], asOf: K.today(), spent: 0, saved: 0, boughtQty: 0, wasted: 0 });
+      added++;
+    }
+  });
+
+  save(); closeSheets(); render();
+  toast([added ? added + " added" : "", updated ? updated + " updated" : "",
+         wiped ? wiped + " cleared" : ""].filter(Boolean).join(", ") + ".");
 }
 
 function starterChips() {
@@ -1744,27 +2003,23 @@ function renderMoney() {
     '<div class="hint" style="margin-top:8px">Each purchase: usual pack price minus what you ' +
     "paid. A pack usually RM40 bought for RM20 saves RM20. Summed over the month.</div></div>";
 
-  var pct = m.budget > 0 ? Math.min(100, (m.spent / m.budget) * 100) : 0;
-  h += '<div class="card"><div class="kv"><span>Spent</span><b class="num">' +
-    K.kr0(m.spent) + "</b></div>" +
-    '<div class="bar"><i class="' + (m.spent > m.budget ? "over" : "") +
-    '" style="width:' + pct.toFixed(1) + '%"></i></div>' +
-    '<div class="kv"><span>The plan at normal prices</span><b class="num">' +
-    K.kr0(m.budget) + "</b></div>" +
-    '<div class="kv"><span>Still to buy this month</span><b class="num">' +
-    K.kr0(m.left) + "</b></div>" +
-    '<div class="kv"><span>Month should land near</span><b class="num">' +
-    K.kr0(m.projected) + "</b></div>" +
-    '<div class="hint" style="margin-top:8px">Budget = monthly plan qty × highest regular ' +
-    "unit price on each lookout list. Projection assumes the rest is bought at that rate; " +
-    "every discount you take pulls the solid line down.</div></div>";
+  // Three numbers only, and all three are the same kind of thing -- ringgit for
+  // this month -- so they can sit on a shared scale and be compared by eye.
+  // "Still to buy" was dropped: it is just budget minus spent, and reading it
+  // as money you are about to lose made a good month look like a bad one.
+  var proj = Math.max(0, m.budget - m.saved);
+  h += '<div class="card">' +
+    '<div class="kv"><span>Budget</span><b class="num">' + K.kr0(m.budget) + "</b></div>" +
+    '<div class="kv"><span>Projected</span><b class="num">' + K.kr0(proj) + "</b></div>" +
+    '<div class="kv"><span>Spent</span><b class="num">' + K.kr0(m.spent) + "</b></div>" +
+    '<div class="hint" style="margin-top:8px">Budget is the month\'s plan at each item\'s ' +
+    "normal price. Projected is that budget less what your offers have already saved.</div></div>";
 
-  h += "<h2>Through the month</h2>";
-  h += '<div class="card">' + chartSVG(m, b) +
-    '<div class="hint" style="margin-top:6px">' +
-    '<span style="color:var(--mute)">Dashed</span> is the plan at normal prices. ' +
-    '<span style="color:var(--ink)">Solid</span> is what you actually spent. ' +
-    "The gap between them is the saving.</div></div>";
+  h += "<h2>Every purchase</h2>";
+  h += '<div class="card">' + savingsSVG() +
+    '<div class="hint" style="margin-top:6px">Two lines, stepping at each purchase: ' +
+    '<span style="color:var(--mute)">what it would have cost</span> at normal prices, and ' +
+    '<span style="color:var(--ink)">what you paid</span>. The gap is the saving.</div></div>';
 
   var rs = S.receipts.slice().sort(function (a, b2) { return b2.ts - a.ts; });
   h += "<h2>" + (rs.length ? "Receipts" : "No purchases yet") + "</h2>";
@@ -1803,71 +2058,77 @@ function renderMoney() {
   body.innerHTML = h;
 }
 
-function chartSVG(m, b) {
-  var W = 320, H = 150, PL = 40, PR = 8, PT = 10, PB = 20;
-  var iw = W - PL - PR, ih = H - PT - PB;
-  var top = Math.max(m.budget, m.projected, m.spent, 1) * 1.12;
-  var x = function (d) { return PL + (iw * (d - 1)) / Math.max(1, b.days - 1); };
-  var y = function (v) { return PT + ih - (ih * v) / top; };
-
-  // cumulative actual spend by day of month
-  var byDay = new Array(b.days + 1).fill(0);
-  S.receipts.forEach(function (r) {
-    var dd = new Date(r.ts).getDate();
-    if (dd >= 1 && dd <= b.days) byDay[dd] += r.total;
-  });
-  var cum = [], run = 0;
-  for (var i = 1; i <= b.dayIn; i++) { run += byDay[i]; cum.push([i, run]); }
-
-  var g = "";
-  // horizontal guides
-  [0, 0.5, 1].forEach(function (f) {
-    var v = top * f;
-    g += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(v).toFixed(1) +
-      '" y2="' + y(v).toFixed(1) + '" stroke="#e6e1d5" stroke-width="1"/>' +
-      '<text x="' + (PL - 5) + '" y="' + (y(v) + 3.5).toFixed(1) +
-      '" text-anchor="end" font-size="8.5" fill="#9c9689" font-family="ui-monospace,monospace">' +
-      Math.round(v) + "</text>";
-  });
-
-  // the plan at normal prices, spread evenly — the line you are trying to beat
-  g += '<line x1="' + x(1) + '" y1="' + y(0).toFixed(1) + '" x2="' + x(b.days) +
-    '" y2="' + y(m.budget).toFixed(1) +
-    '" stroke="#6f6a5e" stroke-width="1.4" stroke-dasharray="4 3"/>';
-
-  // shade the gap between plan-pace and actual, which is the saving so far
-  if (cum.length > 1) {
-    var area = "M" + x(1) + "," + y(0).toFixed(1);
-    cum.forEach(function (p) { area += " L" + x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1); });
-    for (var j = cum.length - 1; j >= 0; j--) {
-      var d0 = cum[j][0];
-      area += " L" + x(d0).toFixed(1) + "," + y((m.budget * (d0 - 1)) / (b.days - 1)).toFixed(1);
-    }
-    g += '<path d="' + area + ' Z" fill="#1a6b46" opacity="0.10"/>';
+/* Two step lines against purchase number, not against the calendar. One point
+ * per purchase on each line: what the same baskets would have cost at normal
+ * prices, and what they actually cost. Both start at zero and only ever rise,
+ * so the widening gap between them IS the running saving — no shaded area to
+ * interpret, no projection line pretending to know the future. */
+function savingsSVG() {
+  var rs = S.receipts.slice().sort(function (a, b) { return a.ts - b.ts; });
+  if (!rs.length) {
+    return '<div class="hint">Nothing bought yet this month. Each purchase you log ' +
+      "adds a step to both lines.</div>";
   }
 
-  // actual spend
-  if (cum.length) {
-    var line = "M" + x(cum[0][0]).toFixed(1) + "," + y(cum[0][1]).toFixed(1);
-    cum.forEach(function (p) { line += " L" + x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1); });
-    g += '<path d="' + line + '" fill="none" stroke="#14120e" stroke-width="2" ' +
-      'stroke-linejoin="round" stroke-linecap="round"/>';
-    var last = cum[cum.length - 1];
-    // where it lands if nothing else goes on offer
-    g += '<path d="M' + x(last[0]).toFixed(1) + "," + y(last[1]).toFixed(1) +
-      " L" + x(b.days).toFixed(1) + "," + y(m.projected).toFixed(1) +
-      '" fill="none" stroke="#14120e" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.5"/>';
-    g += '<circle cx="' + x(last[0]).toFixed(1) + '" cy="' + y(last[1]).toFixed(1) +
-      '" r="3" fill="#14120e"/>';
+  var W = 320, H = 148, PL = 40, PR = 10, PT = 10, PB = 20;
+  var iw = W - PL - PR, ih = H - PT - PB;
+
+  // Cumulative pairs. r.saved is already (normal − paid) for that basket, so
+  // normal is paid + saved and the two rails stay consistent by construction.
+  var pts = [[0, 0, 0]], paid = 0, full = 0;
+  rs.forEach(function (r, i) {
+    paid += r.total;
+    full += r.total + (r.saved > 0 ? r.saved : 0);
+    pts.push([i + 1, paid, full]);
+  });
+
+  var n = pts.length - 1;
+  var top = Math.max(full, paid, 1) * 1.1;
+  var x = function (i) { return PL + (n === 0 ? 0 : (iw * i) / n); };
+  var y = function (v) { return PT + ih - (ih * v) / top; };
+
+  var g = "";
+  [0, 0.5, 1].forEach(function (f) {
+    var v = top * f, yy = y(v).toFixed(1);
+    g += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + yy + '" y2="' + yy +
+      '" stroke="#e6e1d5" stroke-width="1"/>' +
+      '<text x="' + (PL - 5) + '" y="' + (y(v) + 3.5).toFixed(1) +
+      '" text-anchor="end" font-size="8.5" fill="#9c9689" ' +
+      'font-family="ui-monospace,monospace">' + Math.round(v) + "</text>";
+  });
+
+  // Step paths: hold the level, then jump at the purchase. A straight join
+  // would imply the money trickled out between shops, which it did not.
+  var step = function (k) {
+    var d = "M" + x(0).toFixed(1) + "," + y(pts[0][k]).toFixed(1);
+    for (var i = 1; i < pts.length; i++) {
+      d += " L" + x(i).toFixed(1) + "," + y(pts[i - 1][k]).toFixed(1) +
+           " L" + x(i).toFixed(1) + "," + y(pts[i][k]).toFixed(1);
+    }
+    return d;
+  };
+
+  g += '<path d="' + step(2) + '" fill="none" stroke="#8e8878" stroke-width="1.4" ' +
+    'stroke-dasharray="4 3"/>';
+  g += '<path d="' + step(1) + '" fill="none" stroke="#14120e" stroke-width="2" ' +
+    'stroke-linejoin="round"/>';
+
+  var last = pts[pts.length - 1];
+  g += '<circle cx="' + x(n).toFixed(1) + '" cy="' + y(last[1]).toFixed(1) +
+    '" r="3" fill="#14120e"/>';
+  if (last[2] > last[1] + 0.5) {
+    g += '<circle cx="' + x(n).toFixed(1) + '" cy="' + y(last[2]).toFixed(1) +
+      '" r="2.5" fill="#8e8878"/>';
   }
 
   g += '<text x="' + PL + '" y="' + (H - 6) + '" font-size="8.5" fill="#9c9689">1</text>' +
     '<text x="' + (W - PR) + '" y="' + (H - 6) +
-    '" font-size="8.5" fill="#9c9689" text-anchor="end">' + b.days + "</text>";
+    '" font-size="8.5" fill="#9c9689" text-anchor="end">' + n +
+    (n === 1 ? " buy" : " buys") + "</text>";
 
   return '<svg class="chart" viewBox="0 0 ' + W + " " + H +
-    '" preserveAspectRatio="none" role="img" aria-label="Spending against the plan">' +
-    g + "</svg>";
+    '" preserveAspectRatio="none" role="img" ' +
+    'aria-label="What each purchase cost against its normal price">' + g + "</svg>";
 }
 
 /* =================================================================== PLAN */
@@ -1931,7 +2192,11 @@ function renderPlan() {
     '<div class="hint" style="margin:0 0 10px">Everything lives on this device only. ' +
     "Nothing is uploaded. Keep a copy somewhere if you care about it.</div>" +
     '<div class="row"><button class="btn ghost" data-act="export" style="flex:1">Save a backup</button>' +
-    '<button class="btn ghost" data-act="import" style="flex:1">Restore</button></div></div>';
+    '<button class="btn ghost" data-act="import" style="flex:1">Restore</button></div>' +
+    '<div class="row"><button class="btn ghost" data-act="openPlanCSV" style="flex:1">' +
+    "Plan as CSV</button></div>" +
+    '<div class="hint" style="margin-top:8px">Paste the whole monthly plan in as a CSV ' +
+    "instead of filling in a sheet per item, or copy it out to keep elsewhere.</div></div>";
 
   body.innerHTML = h;
 }
@@ -2453,6 +2718,17 @@ document.addEventListener("click", function (e) {
   if (act === "openReset") { openReset(); return; }
   if (act === "confirmReset") { confirmReset(); return; }
   if (act === "refresh") { toast("Checking…"); loadCatalog(); return; }
+  if (act === "sfilt") { SFILT[id] = b.dataset.store || ""; renderResults(id); return; }
+  if (act === "openPlanCSV") { openPlanCSV(); return; }
+  if (act === "applyPlanCSV") { applyPlanCSV(); return; }
+  if (act === "planCSVCopy") {
+    var ta = $("#planCSVArea");
+    ta.select();
+    try { document.execCommand("copy"); toast("Copied."); }
+    catch (e) { toast("Select and copy by hand."); }
+    if (ta.setSelectionRange) ta.setSelectionRange(0, 0);
+    return;
+  }
   if (act === "export") { doExport(); return; }
   if (act === "import") { $("#importFile").click(); return; }
 
@@ -2481,6 +2757,11 @@ document.addEventListener("input", function (e) {
     clearTimeout(searchTimer);
     var id = t.dataset.id;
     searchTimer = setTimeout(function () { renderResults(id); }, 180);
+    return;
+  }
+  if (t.id === "planCSVArea") {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(previewPlanCSV, 200);
     return;
   }
   if (t.id === "buyPacks" || t.id === "buyPrice") { buyPreview(); return; }
